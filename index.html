@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>D.U.B.I.A. - Cervello Digitale</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#182B49">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- HEADER -->
+    <header>
+        <div class="logo">
+            <h1>D.U.B.I.A.</h1>
+            <span class="subtitle">Dynamic Updating Biomass Inference Algorithm</span>
+        </div>
+        <div class="health-indicator" id="healthIndicator">
+            <span class="health-value" id="healthValue">--%</span>
+            <span class="health-label">Indice Salute ($\mathcal{H}$)</span>
+        </div>
+    </header>
+
+    <!-- NAVIGATION TABS -->
+    <nav class="tabs">
+        <button class="tab-btn active" data-target="dashboard">Dashboard</button>
+        <button class="tab-btn" data-target="census">Censimento</button>
+        <button class="tab-btn" data-target="diagnostics">Diagnostica</button>
+    </nav>
+
+    <!-- MAIN CONTENT -->
+    <main>
+        <!-- DASHBOARD TAB -->
+        <section id="dashboard" class="tab-content active">
+            <div class="cards-container">
+                <div class="card stat-card">
+                    <h3>Peso Totale Colonia (Reale)</h3>
+                    <div class="value" id="realWeightValue">-- g</div>
+                </div>
+                <div class="card stat-card">
+                    <h3>Peso Teorico Stimato</h3>
+                    <div class="value" id="predWeightValue">-- g</div>
+                </div>
+            </div>
+
+            <div class="card chart-card">
+                <h3>Analisi Biomassa (Reale vs Teorica)</h3>
+                <canvas id="weightChart"></canvas>
+            </div>
+            
+            <div class="card params-card">
+                <h3>Parametri di Apprendimento Live</h3>
+                <div class="params-grid">
+                    <div class="param">
+                        <span class="param-label">$\theta$ (Resa Alimentazione)</span>
+                        <span class="param-value" id="theta1Value">--</span>
+                    </div>
+                    <div class="param">
+                        <span class="param-label">$\theta_2$ (Crescita Neanidi)</span>
+                        <span class="param-value" id="theta2Value">0.10</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CENSUS TAB -->
+        <section id="census" class="tab-content">
+            <div class="card">
+                <h3>Demografia Stimata</h3>
+                <p class="subtitle-text">Calcolata in base alla biomassa totale e alle costanti specifiche.</p>
+                
+                <div class="pyramid-container">
+                    <div class="pyramid-level adult-female">
+                        <div class="level-info">
+                            <span class="level-name">Femmine Adulte (2.5g)</span>
+                            <span class="level-count" id="countFemale">--</span>
+                        </div>
+                        <div class="progress-bar"><div class="fill" id="barFemale" style="width: 0%"></div></div>
+                    </div>
+                    <div class="pyramid-level adult-male">
+                        <div class="level-info">
+                            <span class="level-name">Maschi Adulti (1.5g)</span>
+                            <span class="level-count" id="countMale">--</span>
+                        </div>
+                        <div class="progress-bar"><div class="fill" id="barMale" style="width: 0%"></div></div>
+                    </div>
+                    <div class="pyramid-level sub-adult">
+                        <div class="level-info">
+                            <span class="level-name">Sub-Adulte (1.6g)</span>
+                            <span class="level-count" id="countSubAdult">--</span>
+                        </div>
+                        <div class="progress-bar"><div class="fill" id="barSubAdult" style="width: 0%"></div></div>
+                    </div>
+                    <div class="pyramid-level nymph-medium">
+                        <div class="level-info">
+                            <span class="level-name">Neanidi Medie (0.8g)</span>
+                            <span class="level-count" id="countMedium">--</span>
+                        </div>
+                        <div class="progress-bar"><div class="fill" id="barMedium" style="width: 0%"></div></div>
+                    </div>
+                    <div class="pyramid-level nymph-small">
+                        <div class="level-info">
+                            <span class="level-name">Neanidi Piccole (0.3g)</span>
+                            <span class="level-count" id="countSmall">--</span>
+                        </div>
+                        <div class="progress-bar"><div class="fill" id="barSmall" style="width: 0%"></div></div>
+                    </div>
+                    <div class="pyramid-level baby">
+                        <div class="level-info">
+                            <span class="level-name">Micro-Neanidi (0.1g)</span>
+                            <span class="level-count" id="countBaby">--</span>
+                        </div>
+                        <div class="progress-bar"><div class="fill" id="barBaby" style="width: 0%"></div></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DIAGNOSTICS TAB -->
+        <section id="diagnostics" class="tab-content">
+            <div class="card">
+                <h3>Storico Indice di Salute ($\mathcal{H}$)</h3>
+                <canvas id="healthChart"></canvas>
+            </div>
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3>Log Manutenzione & Pesate</h3>
+                    <button id="btnResetDB" style="background-color: var(--alert-red); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">Reset Dati</button>
+                </div>
+                <div class="table-container">
+                    <table id="historyTable">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Peso (g)</th>
+                                <th>Cibo</th>
+                                <th>$\mathcal{H}$ (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Generato via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- FLOATING ACTION BUTTON -->
+    <button class="fab" id="fabAdd" title="Aggiungi Pesata">+</button>
+
+    <!-- MODAL FOR NEW ENTRY -->
+    <div class="modal-overlay" id="entryModal">
+        <div class="modal">
+            <h2>Nuova Rilevazione</h2>
+            <form id="entryForm">
+                <div class="form-group">
+                    <label for="inputDate">Data</label>
+                    <input type="date" id="inputDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="inputWeight">Peso Totale Colonia (grammi)</label>
+                    <input type="number" step="0.1" id="inputWeight" required>
+                </div>
+                <div class="form-group">
+                    <label for="inputFoodType">Tipo di Cibo Somministrato</label>
+                    <select id="inputFoodType" required>
+                        <option value="pastura">Pastura Secca (Alta Resa)</option>
+                        <option value="verdure">Verdure Miste / Frutta</option>
+                        <option value="lattuga">Lattuga / Foglie (Molta Acqua)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="inputNotes">Note di Manutenzione</label>
+                    <textarea id="inputNotes" rows="3" placeholder="Es. pulizia fondo, sostituzione cartoni..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" id="btnCancelEntry">Annulla</button>
+                    <button type="submit" class="btn-submit">Salva ed Elabora</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- NOTIFICATION AREA -->
+    <div id="notificationArea" class="notification-area"></div>
+
+    <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(registration => {
+                    console.log('ServiceWorker registration successful');
+                }).catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
