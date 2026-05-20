@@ -3,6 +3,7 @@
  */
 
 // Constants & Configurations
+const GAS_URL = "https://script.google.com/macros/s/AKfycbyXudg8gofWtLq8YZdlDZaCUkDDFNegFiS5vKod349zL7vTvGYrkExtR9j5gsm8x6QwQQ/exec";
 const ALPHA = 1e-6; // Learning rate for gradient descent
 const DEFAULT_PARAMS = {
     theta1: 0.05, // Resa Alimentazione
@@ -75,14 +76,40 @@ const loadInitialData = async () => {
         }
     };
 
-    // Load measurements
+    // Try to load from Google Sheets first
+    try {
+        showNotification("Sincronizzazione", "Download dati dal cloud...", "success");
+        const response = await fetch(GAS_URL);
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+            appState.measurements = data.map(m => ({
+                ...m,
+                total_weight: parseFloat(m.total_weight) || 0,
+                food_amount: parseFloat(m.food_amount) || 0,
+                harvest_amount: parseFloat(m.harvest_amount) || 0,
+                adult_ratio: parseFloat(m.adult_ratio) || 0,
+                predicted_weight: parseFloat(m.predicted_weight) || 0,
+                health_index: parseFloat(m.health_index) || 0,
+                is_new_blood: m.is_new_blood === 'true' || m.is_new_blood === true
+            })).sort((a, b) => new Date(a.date) - new Date(b.date));
+            showNotification("Sincronizzazione", "Dati cloud caricati con successo.", "success");
+            return;
+        }
+    } catch (e) {
+        console.warn("Could not fetch from GAS, falling back to local DB.", e);
+        showNotification("Offline", "Caricamento dati locali (offline).", "warning");
+    }
+
+    // Load measurements from local fallback
     return new Promise((resolve) => {
         const measTx = db.transaction("measurements", "readonly");
         const measStore = measTx.objectStore("measurements");
         const measReq = measStore.getAll();
         
         measReq.onsuccess = () => {
-            appState.measurements = measReq.result.sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (appState.measurements.length === 0) {
+                appState.measurements = measReq.result.sort((a, b) => new Date(a.date) - new Date(b.date));
+            }
             resolve();
         };
     });
@@ -94,13 +121,30 @@ const saveParams = (params) => {
     store.put({ id: 1, ...params });
 };
 
-const saveMeasurement = (measurement) => {
+const saveMeasurement = async (measurement) => {
+    // Save to Google Sheets
+    try {
+        const response = await fetch(GAS_URL, {
+            method: 'POST',
+            body: JSON.stringify(measurement)
+        });
+        const result = await response.json();
+        if (result.id) {
+            measurement.id = result.id;
+        }
+    } catch (e) {
+        console.error("Failed to save to Cloud:", e);
+    }
+
+    // Still save locally
     return new Promise((resolve) => {
         const tx = db.transaction("measurements", "readwrite");
         const store = tx.objectStore("measurements");
-        const req = store.add(measurement);
+
+        if (!measurement.id) measurement.id = new Date().getTime();
+
+        const req = store.put(measurement);
         req.onsuccess = () => {
-            measurement.id = req.result;
             appState.measurements.push(measurement);
             resolve(measurement);
         };
