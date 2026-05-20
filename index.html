@@ -21,7 +21,7 @@
         </div>
         <div class="health-indicator" id="healthIndicator">
             <span class="health-value" id="healthValue">--%</span>
-            <span class="health-label">Indice Salute ($\mathcal{H}$)</span>
+            <span class="health-label">Indice Salute (H)</span>
         </div>
     </header>
 
@@ -37,11 +37,17 @@
         <!-- DASHBOARD TAB -->
         <section id="dashboard" class="tab-content active">
             <div class="card delta-g-card">
-                <h3>Orizzonte di Stima Temporale ($\Delta g$)</h3>
+                <h3>Orizzonte di Stima Temporale (Δg)</h3>
                 <div class="slider-container">
                     <input type="range" id="deltaGSlider" min="1" max="365" step="1" value="30">
-                    <input type="number" id="deltaGInput" min="1" max="365" step="1" value="30">
+                    <input type="number" id="deltaGInput" class="input-standard" style="width: 80px;" min="1" max="365" step="1" value="30">
                     <span>giorni</span>
+                </div>
+                <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                    <button class="btn-standard btn-primary btn-preset" data-val="7" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">+7 gg</button>
+                    <button class="btn-standard btn-primary btn-preset" data-val="14" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">+14 gg</button>
+                    <button class="btn-standard btn-primary btn-preset" data-val="30" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">+30 gg</button>
+                    <button class="btn-standard btn-primary btn-preset" data-val="90" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;">+90 gg</button>
                 </div>
             </div>
 
@@ -61,29 +67,45 @@
                 <canvas id="weightChart"></canvas>
             </div>
             
-            <div class="card params-card">
-                <h3>Parametri di Apprendimento Live</h3>
-                <div class="params-grid">
-                    <div class="param">
-                        <span class="param-label">$\theta_1$ (Resa Alimentazione)</span>
-                        <span class="param-value" id="theta1Value">--</span>
-                    </div>
-                    <div class="param">
-                        <span class="param-label">$\theta_2$ (Crescita Naturale)</span>
-                        <span class="param-value" id="theta2Value">0.10</span>
+            <div class="bottom-params-section">
+                <div class="card params-card">
+                    <h3>Parametri di Apprendimento Live</h3>
+                    <div class="params-grid">
+                        <div class="param">
+                            <span class="param-label">θ₁ (Resa Alimentazione)</span>
+                            <span class="param-value" id="theta1Value">--</span>
+                        </div>
+                        <div class="param">
+                            <span class="param-label">θ₂ (Crescita Naturale)</span>
+                            <span class="param-value" id="theta2Value">0.10</span>
+                        </div>
                     </div>
                 </div>
-            </div>
-            
-            <div class="card stat-card" style="margin-top: 1rem; border-color: var(--accent-purple);">
-                <h3>Tasso Femmine Gravide Stimato</h3>
-                <div class="value" id="pregnantRatioValue" style="color: var(--accent-purple);">-- %</div>
-                <p class="subtitle-text" style="margin-top: 0.5rem; margin-bottom: 0;">Calcolato in base allo scostamento di biomassa (+0.4g/femmina).</p>
+
+                <div class="card stat-card pregnant-ratio-card">
+                    <h3>Tasso Femmine Gravide Stimato</h3>
+                    <div class="value" id="pregnantRatioValue">-- %</div>
+                    <p class="subtitle-text">Calcolato in base allo scostamento di biomassa (+0.4g/femmina).</p>
+                </div>
             </div>
         </section>
 
         <!-- CENSUS TAB -->
         <section id="census" class="tab-content">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h3>Calibrazione Manuale Demografia</h3>
+                    <button id="btnCalibrate" class="btn-standard btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem;">Avvia Calibrazione</button>
+                </div>
+                <p class="subtitle-text">Inserisci il conteggio reale di una categoria per forzare l'algoritmo a correggere le stime volumetriche.</p>
+            </div>
+
+            <div class="card" id="sexRatioCard" style="margin-bottom: 1rem;">
+                <h3>Rapporto Sessuale (Maschi:Femmine)</h3>
+                <div class="value" id="sexRatioValue" style="font-size: 1.5rem; font-weight: bold;">--</div>
+                <p class="subtitle-text" id="sexRatioStatus" style="margin-top: 0.5rem; margin-bottom: 0;">Calcolo in corso...</p>
+            </div>
+
             <div class="card">
                 <h3>Demografia Stimata</h3>
                 <p class="subtitle-text">Calcolata in base alla biomassa totale e alle costanti specifiche.</p>
@@ -137,14 +159,23 @@
 
         <!-- DIAGNOSTICS TAB -->
         <section id="diagnostics" class="tab-content">
+            <div class="card stat-card" style="border-color: var(--accent-green);">
+                <h3>Indice di Conversione Alimentare (FCR) Medio</h3>
+                <div class="value" id="fcrValue" style="color: var(--accent-green);">--</div>
+                <p class="subtitle-text">Grammi di cibo necessari per generare 1g di biomassa. (Ideale: < 2.0)</p>
+            </div>
+
             <div class="card">
-                <h3>Storico Indice di Salute ($\mathcal{H}$)</h3>
+                <h3>Storico Indice di Salute (H)</h3>
                 <canvas id="healthChart"></canvas>
             </div>
             <div class="card">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <h3>Log Manutenzione & Pesate</h3>
-                    <button id="btnResetDB" style="background-color: var(--alert-red); color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer;">Reset Dati</button>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button id="btnExportCSV" class="btn-standard btn-primary">Esporta CSV</button>
+                        <button id="btnResetDB" class="btn-standard btn-danger">Reset Dati</button>
+                    </div>
                 </div>
                 <div class="table-container">
                     <table id="historyTable">
@@ -153,7 +184,8 @@
                                 <th>Data</th>
                                 <th>Peso (g)</th>
                                 <th>Cibo (g)</th>
-                                <th>$\mathcal{H}$ (%)</th>
+                                <th>H (%)</th>
+                                <th>Note</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -175,30 +207,58 @@
             <form id="entryForm">
                 <div class="form-group">
                     <label for="inputDate">Data</label>
-                    <input type="date" id="inputDate" required>
+                    <input type="date" id="inputDate" class="input-standard" required>
                 </div>
                 <div class="form-group">
                     <label for="inputWeight">Peso Totale Colonia (grammi)</label>
-                    <input type="number" step="0.1" id="inputWeight" required>
+                    <input type="number" step="0.1" id="inputWeight" class="input-standard" required>
                 </div>
                 <div class="form-group">
-                    <label for="inputFoodAmount">Cibo Somministrato Cumulativo ($C_t$) (grammi)</label>
-                    <input type="number" step="0.1" id="inputFoodAmount" required>
+                    <label for="inputFoodAmount">Cibo Somministrato Cumulativo (Ct) (grammi)</label>
+                    <input type="number" step="0.1" id="inputFoodAmount" class="input-standard" required>
                 </div>
                 <div class="form-group">
-                    <label for="inputAdultRatioSlider">Rapporto Adulti ($A_t$)</label>
+                    <label for="inputAdultRatioSlider">Rapporto Adulti (At)</label>
                     <div class="slider-container">
                         <input type="range" id="inputAdultRatioSlider" min="0.0" max="1.0" step="0.01" value="0.35">
-                        <input type="number" step="0.01" id="inputAdultRatio" min="0.0" max="1.0" value="0.35" required>
+                        <input type="number" step="0.01" id="inputAdultRatio" class="input-standard" min="0.0" max="1.0" value="0.35" style="width: 80px;" required>
                     </div>
                 </div>
                 <div class="form-group">
                     <label for="inputNotes">Note di Manutenzione</label>
-                    <textarea id="inputNotes" rows="3" placeholder="Es. pulizia fondo, sostituzione cartoni..."></textarea>
+                    <textarea id="inputNotes" class="input-standard" rows="3" placeholder="Es. pulizia fondo, sostituzione cartoni..."></textarea>
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn-cancel" id="btnCancelEntry">Annulla</button>
-                    <button type="submit" class="btn-submit">Salva ed Elabora</button>
+                    <button type="button" class="btn-standard btn-cancel" id="btnCancelEntry">Annulla</button>
+                    <button type="submit" class="btn-standard btn-primary">Salva ed Elabora</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL FOR CALIBRATION -->
+    <div class="modal-overlay" id="calibrationModal">
+        <div class="modal">
+            <h2>Calibrazione Manuale</h2>
+            <form id="calibrationForm">
+                <div class="form-group">
+                    <label for="calibCategory">Categoria</label>
+                    <select id="calibCategory" class="input-standard" required>
+                        <option value="FEMALE">Femmine Adulte (2.5g)</option>
+                        <option value="MALE">Maschi Adulti (1.5g)</option>
+                        <option value="SUBADULT">Sub-Adulte (1.6g)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="calibCount">Conteggio Reale Rilevato</label>
+                    <input type="number" id="calibCount" class="input-standard" min="1" step="1" required>
+                </div>
+                <p class="subtitle-text" style="font-size: 0.8rem; margin-top: 1rem;">
+                    Questa operazione correggerà i parametri interni per allinearli alla realtà osservata. Verrà creata una nuova rilevazione automatica di compensazione.
+                </p>
+                <div class="modal-actions">
+                    <button type="button" class="btn-standard btn-cancel" id="btnCancelCalib">Annulla</button>
+                    <button type="submit" class="btn-standard btn-primary">Applica Calibrazione</button>
                 </div>
             </form>
         </div>
