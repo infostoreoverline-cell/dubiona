@@ -220,6 +220,28 @@ const updateUI = () => {
     if (latest.health_index < HEALTH_THRESHOLD_ALERT) healthEl.classList.add('alert');
     else if (latest.health_index < HEALTH_THRESHOLD_WARNING) healthEl.classList.add('warning');
 
+    // FCR Calculation
+    if (appState.measurements.length > 1) {
+        let totalFood = 0;
+        let totalWeightGain = 0;
+        for (let i = 1; i < appState.measurements.length; i++) {
+            const m = appState.measurements[i];
+            const prev = appState.measurements[i-1];
+            if (m.food_amount && m.total_weight > prev.total_weight) {
+                totalFood += m.food_amount;
+                totalWeightGain += (m.total_weight - prev.total_weight);
+            }
+        }
+        if (totalWeightGain > 0) {
+            const fcr = totalFood / totalWeightGain;
+            document.getElementById('fcrValue').innerText = fcr.toFixed(2);
+        } else {
+            document.getElementById('fcrValue').innerText = "--";
+        }
+    } else {
+        document.getElementById('fcrValue').innerText = "--";
+    }
+
     // Census calculation (based on mass distribution approximation) using FUTURE predicted weight
     const w = futurePred;
     
@@ -234,6 +256,32 @@ const updateUI = () => {
     const bCount = Math.round((w * 0.05) / MASS.BABY);
 
     const totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
+
+    // Sex Ratio calculation
+    if (fCount > 0) {
+        const ratio = mCount / fCount;
+        document.getElementById('sexRatioValue').innerText = `1 : ${(1/ratio).toFixed(1)}`;
+        const statusEl = document.getElementById('sexRatioStatus');
+        const cardEl = document.getElementById('sexRatioCard');
+
+        // Optimal ratio is often considered 1:3 to 1:5 (males to females) -> 0.2 to 0.33
+        if (ratio >= 0.2 && ratio <= 0.35) {
+            statusEl.innerText = "Ottimale per la riproduzione (1:3 - 1:5).";
+            statusEl.style.color = "var(--accent-green)";
+            cardEl.style.borderColor = "var(--accent-green)";
+        } else if (ratio > 0.35) {
+            statusEl.innerText = "Eccesso di maschi. Valutare la rimozione per evitare competizione/stress.";
+            statusEl.style.color = "var(--alert-red)";
+            cardEl.style.borderColor = "var(--alert-red)";
+        } else {
+            statusEl.innerText = "Scarsità di maschi. Potrebbe ridurre la frequenza di accoppiamento.";
+            statusEl.style.color = "#F2C94C"; // Warning yellow
+            cardEl.style.borderColor = "#F2C94C";
+        }
+    } else {
+        document.getElementById('sexRatioValue').innerText = "--";
+        document.getElementById('sexRatioStatus').innerText = "Dati insufficienti.";
+    }
 
     document.getElementById('countFemale').innerText = fCount;
     document.getElementById('countMale').innerText = mCount;
@@ -264,6 +312,9 @@ const updateUI = () => {
             <td style="color: ${m.health_index < 75 ? 'var(--alert-red)' : 'var(--accent-green)'}">
                 ${m.health_index.toFixed(1)}%
             </td>
+            <td style="max-width: 150px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${m.notes || ''}">
+                ${m.notes || '-'}
+            </td>
         `;
         tbody.appendChild(row);
     });
@@ -276,6 +327,7 @@ const updateCharts = () => {
     const realData = appState.measurements.map(m => m.total_weight);
     const predData = appState.measurements.map(m => m.predicted_weight);
     const healthData = appState.measurements.map(m => m.health_index);
+    const notesData = appState.measurements.map(m => m.notes || '');
 
     if (appState.measurements.length > 0) {
         const latest = appState.measurements[appState.measurements.length - 1];
@@ -291,6 +343,7 @@ const updateCharts = () => {
         labels.push(futureDateStr + ' (Proj)');
         realData.push(null); // No real data for future
         predData.push(futurePred);
+        notesData.push('Proiezione Futura');
     }
 
     // Chart.js global defaults
@@ -328,7 +381,30 @@ const updateCharts = () => {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'top' } },
+            plugins: {
+                legend: { position: 'top' },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y.toFixed(1) + ' g';
+                            }
+                            return label;
+                        },
+                        afterBody: function(tooltipItems) {
+                            const dataIndex = tooltipItems[0].dataIndex;
+                            if (notesData[dataIndex]) {
+                                return '\nNote: ' + notesData[dataIndex];
+                            }
+                            return '';
+                        }
+                    }
+                }
+            },
             scales: {
                 y: { grid: { color: 'rgba(255,255,255,0.05)' } },
                 x: { grid: { display: false } }
@@ -357,6 +433,20 @@ const updateCharts = () => {
         options: {
             responsive: true,
             plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return 'Indice Salute: ' + context.parsed.y.toFixed(1) + '%';
+                        },
+                        afterBody: function(tooltipItems) {
+                            const dataIndex = tooltipItems[0].dataIndex;
+                            if (notesData[dataIndex]) {
+                                return '\nNote: ' + notesData[dataIndex];
+                            }
+                            return '';
+                        }
+                    }
+                },
                 annotation: { // Conceptual, requires chartjs-plugin-annotation for actual line drawing
                     annotations: {
                         line1: { type: 'line', yMin: 75, yMax: 75, borderColor: '#C0292B', borderWidth: 1, borderDash: [2,2] }
@@ -416,6 +506,79 @@ document.addEventListener('DOMContentLoaded', async () => {
         updateUI(); // Real-time recalculation
     });
 
+    const presetBtns = document.querySelectorAll('.btn-preset');
+    presetBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const val = e.target.dataset.val;
+            deltaGSlider.value = val;
+            deltaGInput.value = val;
+            updateUI();
+        });
+    });
+
+    // Calibration logic
+    const calibModal = document.getElementById('calibrationModal');
+    const btnCalibrate = document.getElementById('btnCalibrate');
+    const btnCancelCalib = document.getElementById('btnCancelCalib');
+    const calibForm = document.getElementById('calibrationForm');
+
+    if (btnCalibrate) {
+        btnCalibrate.addEventListener('click', () => {
+            if (appState.measurements.length === 0) {
+                showNotification("Errore", "Nessun dato presente. Inserisci prima una pesata.", "alert");
+                return;
+            }
+            calibModal.classList.add('active');
+        });
+    }
+
+    if (btnCancelCalib) {
+        btnCancelCalib.addEventListener('click', () => calibModal.classList.remove('active'));
+    }
+
+    if (calibForm) {
+        calibForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const category = document.getElementById('calibCategory').value;
+            const count = parseInt(document.getElementById('calibCount').value);
+
+            const latest = appState.measurements[appState.measurements.length - 1];
+            const currentWeight = latest.total_weight;
+
+            // Calculate theoretical weight of the category
+            const categoryWeight = count * MASS[category];
+
+            // Re-calculate Adult Ratio if female or male
+            let newAdultRatio = latest.adult_ratio;
+            if (category === 'FEMALE' || category === 'MALE') {
+                // If we know exactly how many females, we can force the ratio
+                if (category === 'FEMALE') {
+                    newAdultRatio = categoryWeight / currentWeight;
+                }
+                // Cap it to sane bounds
+                newAdultRatio = Math.min(0.9, Math.max(0.1, newAdultRatio));
+            }
+
+            // Apply a slight bump to theta2 to simulate learning from manual intervention
+            appState.params.theta2 = appState.params.theta2 * 1.05;
+            saveParams(appState.params);
+
+            // Record a calibration event
+            const todayDate = new Date().toISOString().split('T')[0];
+            await processNewMeasurement(
+                todayDate,
+                currentWeight,
+                0, // 0 food for calibration event
+                newAdultRatio,
+                `[Calibrazione] Conteggio reale: ${count} ${category}`
+            );
+
+            calibModal.classList.remove('active');
+            calibForm.reset();
+            showNotification("Calibrazione Applicata", "I parametri demografici sono stati aggiornati.", "success");
+        });
+    }
+
     const adultRatioSlider = document.getElementById('inputAdultRatioSlider');
     const adultRatioInput = document.getElementById('inputAdultRatio');
 
@@ -455,19 +618,79 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Reset DB Logic
+    // CSV Export Logic
+    const btnExportCSV = document.getElementById('btnExportCSV');
+    if (btnExportCSV) {
+        btnExportCSV.addEventListener('click', () => {
+            if (appState.measurements.length === 0) {
+                showNotification("Attenzione", "Nessun dato da esportare.", "warning");
+                return;
+            }
+
+            // CSV Header
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "Data,Peso Reale (g),Peso Teorico (g),Cibo (g),Ratio Adulti,Indice Salute (%),Note\n";
+
+            appState.measurements.forEach(m => {
+                // Escape quotes in notes
+                const safeNotes = m.notes ? `"${m.notes.replace(/"/g, '""')}"` : "";
+                const row = [
+                    m.date,
+                    m.total_weight.toFixed(2),
+                    (m.predicted_weight || m.total_weight).toFixed(2),
+                    (m.food_amount || 0).toFixed(2),
+                    (m.adult_ratio || 0).toFixed(2),
+                    m.health_index.toFixed(2),
+                    safeNotes
+                ];
+                csvContent += row.join(",") + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "dubia_storico_dati.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showNotification("Esportazione Completata", "Il file CSV è stato scaricato.", "success");
+        });
+    }
+
     const btnResetDB = document.getElementById('btnResetDB');
     if (btnResetDB) {
         btnResetDB.addEventListener('click', () => {
-            if (confirm("Attenzione: questo eliminerà tutti i dati inseriti manualmente e ricaricherà solo lo storico iniziale. Procedere?")) {
+            // Using custom modal for confirmation
+            const confirmModal = document.createElement('div');
+            confirmModal.className = 'modal-overlay active';
+            confirmModal.innerHTML = `
+                <div class="modal">
+                    <h2 style="color: var(--alert-red);">Conferma Reset</h2>
+                    <p>Attenzione: questo eliminerà tutti i dati inseriti manualmente e ricaricherà solo lo storico iniziale. Procedere?</p>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-standard btn-cancel" id="btnCancelReset">Annulla</button>
+                        <button type="button" class="btn-standard btn-danger" id="btnConfirmReset">Procedi</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(confirmModal);
+
+            document.getElementById('btnCancelReset').addEventListener('click', () => {
+                document.body.removeChild(confirmModal);
+            });
+
+            document.getElementById('btnConfirmReset').addEventListener('click', () => {
+                document.body.removeChild(confirmModal);
                 const req = indexedDB.deleteDatabase(dbName);
                 req.onsuccess = () => {
-                    alert("Database resettato. La pagina verrà ricaricata.");
-                    window.location.reload();
+                    showNotification("Reset completato", "Database resettato. Ricaricamento in corso...", "success");
+                    setTimeout(() => window.location.reload(), 1500);
                 };
                 req.onerror = () => {
-                    alert("Errore nel reset del database.");
+                    showNotification("Errore", "Errore nel reset del database.", "alert");
                 };
-            }
+            });
         });
     }
 });

@@ -432,3 +432,85 @@ th {
     from { transform: translateY(-20px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
 }
+
+/* Bottom Params Section */
+.bottom-params-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.bottom-params-section .params-card {
+    margin-bottom: 0;
+}
+
+.bottom-params-section .pregnant-ratio-card {
+    margin-bottom: 0;
+    margin-top: 0;
+    border-color: var(--accent-purple);
+}
+
+.bottom-params-section .pregnant-ratio-card .value {
+    color: var(--accent-purple);
+}
+
+.bottom-params-section .pregnant-ratio-card .subtitle-text {
+    margin-top: 0.5rem;
+    margin-bottom: 0;
+}
+
+/* Global Input and Button Styles */
+button, input[type="text"], input[type="number"], input[type="date"], select, textarea {
+    font-family: 'Inter', sans-serif;
+}
+
+.btn-standard {
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    border: none;
+    font-size: 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.btn-standard:active {
+    transform: scale(0.98);
+}
+
+.btn-primary {
+    background-color: var(--accent-green);
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-green-hover);
+}
+
+.btn-danger {
+    background-color: var(--alert-red);
+    color: white;
+}
+
+.btn-danger:hover {
+    background-color: #A02020;
+}
+
+.input-standard {
+    width: 100%;
+    padding: 0.8rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-navy);
+    color: white;
+    font-size: 1rem;
+    transition: border-color 0.2s;
+}
+
+.input-standard:focus {
+    outline: none;
+    border-color: var(--accent-green);
+}
