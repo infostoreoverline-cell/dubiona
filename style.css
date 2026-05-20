@@ -158,6 +158,44 @@ main {
     width: 100%;
 }
 
+.delta-g-card .slider-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.slider-container input[type=range] {
+    flex-grow: 1;
+    -webkit-appearance: none;
+    background: var(--bg-navy);
+    height: 6px;
+    border-radius: 3px;
+    outline: none;
+}
+
+.slider-container input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(39, 174, 96, 0.5);
+}
+
+.slider-container input[type=number] {
+    width: 80px;
+    padding: 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-navy);
+    color: white;
+    font-size: 1rem;
+    text-align: center;
+}
+
 .chart-card h3 { margin-bottom: 1rem; font-size: 1rem; }
 
 /* PARAMETERS CARD */
@@ -308,7 +346,7 @@ th {
     color: var(--text-muted);
 }
 
-.form-group input, .form-group textarea {
+.form-group input, .form-group textarea, .form-group select {
     width: 100%;
     padding: 0.8rem;
     border-radius: 8px;
@@ -316,6 +354,16 @@ th {
     background-color: var(--bg-navy);
     color: white;
     font-size: 1rem;
+}
+
+.form-group .slider-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.form-group .slider-container input[type="number"] {
+    width: 80px;
 }
 
 .form-group input:focus, .form-group textarea:focus {

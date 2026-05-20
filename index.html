@@ -36,6 +36,15 @@
     <main>
         <!-- DASHBOARD TAB -->
         <section id="dashboard" class="tab-content active">
+            <div class="card delta-g-card">
+                <h3>Orizzonte di Stima Temporale ($\Delta g$)</h3>
+                <div class="slider-container">
+                    <input type="range" id="deltaGSlider" min="1" max="365" step="1" value="30">
+                    <input type="number" id="deltaGInput" min="1" max="365" step="1" value="30">
+                    <span>giorni</span>
+                </div>
+            </div>
+
             <div class="cards-container">
                 <div class="card stat-card">
                     <h3>Peso Totale Colonia (Reale)</h3>
@@ -56,7 +65,7 @@
                 <h3>Parametri di Apprendimento Live</h3>
                 <div class="params-grid">
                     <div class="param">
-                        <span class="param-label">$\theta$ (Resa Alimentazione)</span>
+                        <span class="param-label">$\theta_1$ (Resa Alimentazione)</span>
                         <span class="param-value" id="theta1Value">--</span>
                     </div>
                     <div class="param">
@@ -137,7 +146,7 @@
                             <tr>
                                 <th>Data</th>
                                 <th>Peso (g)</th>
-                                <th>Cibo</th>
+                                <th>Cibo (g)</th>
                                 <th>$\mathcal{H}$ (%)</th>
                             </tr>
                         </thead>
@@ -167,12 +176,15 @@
                     <input type="number" step="0.1" id="inputWeight" required>
                 </div>
                 <div class="form-group">
-                    <label for="inputFoodType">Tipo di Cibo Somministrato</label>
-                    <select id="inputFoodType" required>
-                        <option value="pastura">Pastura Secca (Alta Resa)</option>
-                        <option value="verdure">Verdure Miste / Frutta</option>
-                        <option value="lattuga">Lattuga / Foglie (Molta Acqua)</option>
-                    </select>
+                    <label for="inputFoodAmount">Cibo Somministrato Cumulativo ($C_t$) (grammi)</label>
+                    <input type="number" step="0.1" id="inputFoodAmount" required>
+                </div>
+                <div class="form-group">
+                    <label for="inputAdultRatioSlider">Rapporto Adulti ($A_t$)</label>
+                    <div class="slider-container">
+                        <input type="range" id="inputAdultRatioSlider" min="0.0" max="1.0" step="0.01" value="0.35">
+                        <input type="number" step="0.01" id="inputAdultRatio" min="0.0" max="1.0" value="0.35" required>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label for="inputNotes">Note di Manutenzione</label>
