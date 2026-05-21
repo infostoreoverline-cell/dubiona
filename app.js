@@ -6,8 +6,8 @@
 const GAS_URL = "https://script.google.com/macros/s/AKfycbzaGa6lBBCvmHShCMymnDm9Nd1Ht1gtZ83PpMdbvR7DeObLpzR60KySLttAC7zCV6KNVQ/exec";
 const ALPHA = 1e-6; // Learning rate for gradient descent
 const DEFAULT_PARAMS = {
-    theta1: 0.05, // Resa Alimentazione
-    theta2: 0.01, // Crescita Neanidi
+    theta1: 0.30, // Resa Alimentazione
+    theta2: 1.05, // Crescita Neanidi
     mortalityRate: 1.5 // Mortalità Mensile (%)
 };
 const HEALTH_THRESHOLD_WARNING = 90;
@@ -214,12 +214,13 @@ const seedDataIfEmpty = async () => {
 // --- ML ENGINE (D.U.B.I.A.) ---
 
 const calculatePrediction = (lastWeight, foodAmount, adultRatio, delta_g, params, harvestAmount = 0) => {
-    // W_pred = W_curr + (theta1 * C_t) + (theta2 * W_curr * (1 - A_t) * (delta_g / 30))
-    let w_pred = lastWeight + (params.theta1 * foodAmount) + (params.theta2 * (lastWeight * (1 - adultRatio)) * (delta_g / 30));
-    // Applica Mortalità Fisiologica (proporzionale ai giorni delta_g rispetto a 30)
-    let mortalityRate = params.mortalityRate || 1.5;
-    let mortalityFactor = (mortalityRate / 100) * (delta_g / 30);
-    w_pred = w_pred * (1 - mortalityFactor);
+    const pesoNeanidiIniziale = lastWeight * 0.65;
+    const tempoProporzionale = delta_g / 30;
+
+    let w_pred = lastWeight +
+                 (foodAmount * params.theta1) +
+                 (pesoNeanidiIniziale * params.theta2 * tempoProporzionale);
+
     // Sottrai prelievo
     w_pred -= harvestAmount;
     return Math.max(0, w_pred);
@@ -242,14 +243,17 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
 
         predictedWeight = calculatePrediction(lastMeasurement.total_weight, foodAmount, adultRatio, delta_g, appState.params, harvestAmount);
         
-        // Calculate Error (E = W_pred - W_real in text, actually text says E = W_pred - W_real. Wait: "E = W_pred - W_real". Then theta1_new = theta1_old - (alpha * E * C_t).
+        // 1. Calcolo dell'errore (Predizione del sistema - Realtà della bilancia)
         const error = predictedWeight - realWeight;
         
-        // Gradient Descent Update
-        const newTheta1 = appState.params.theta1 - (ALPHA * error * foodAmount);
-        const newTheta2 = appState.params.theta2 - (ALPHA * error * (lastMeasurement.total_weight * (1 - adultRatio) * (delta_g / 30)));
+        const pesoNeanidiIniziale = lastMeasurement.total_weight * 0.65;
+        const tempoProporzionale = delta_g / 30;
+
+        // 2. Discesa del Gradiente per ottimizzare i parametri
+        const newTheta1 = appState.params.theta1 - (error * foodAmount * ALPHA);
+        const newTheta2 = appState.params.theta2 - (error * pesoNeanidiIniziale * tempoProporzionale * ALPHA);
         
-        appState.params.theta1 = Math.max(0, newTheta1); // Prevent negative efficiencies
+        appState.params.theta1 = Math.max(0.01, newTheta1); // Prevent negative efficiencies, lower bound 0.01
         appState.params.theta2 = Math.max(0, newTheta2);
         saveParams(appState.params);
 
@@ -413,20 +417,23 @@ const updateUI = () => {
         document.getElementById('fcrValue').innerText = "--";
     }
 
-    // Census calculation (based on mass distribution approximation) using FUTURE predicted weight
-    const w = futurePred;
+    // Census calculation (based on mass distribution approximation) using LATEST REAL weight
+    const w = latest.total_weight;
     
     // Approximated mass distribution
-    const fCount = Math.round((w * lastAdultRatio) / MASS.FEMALE);
-    // The rest is distributed according to previous logic, scaled by remaining ratio
-    const remainingRatio = 1 - lastAdultRatio;
-    const mCount = Math.round((w * 0.10) / MASS.MALE); // Let's keep fixed ratios for others, or scaled. Let's just keep original fixed proportions relative to total for simplicity, but adult female as the adult_ratio.
-    const saCount = Math.round((w * 0.20) / MASS.SUBADULT);
-    const medCount = Math.round((w * 0.20) / MASS.MEDIUM);
-    const smCount = Math.round((w * 0.10) / MASS.SMALL);
-    const bCount = Math.round((w * 0.05) / MASS.BABY);
+    const pesoAdulti = w * 0.35;
+    const pesoNeanidi = w * 0.65;
 
-    const totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
+    let fCount = Math.round((pesoAdulti * 0.77) / 2.5);
+    let mCount = Math.round((pesoAdulti * 0.23) / 1.5);
+    let medCount = Math.round((pesoNeanidi * 0.70) / 0.8);
+    let bCount = Math.round((pesoNeanidi * 0.30) / 0.1);
+
+    // Set other categories to zero based on mathematical formula
+    let saCount = 0;
+    let smCount = 0;
+
+    let totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
 
     // Economic Value Calculator
     // Prices per individual (approximate example prices in EUR)
