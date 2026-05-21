@@ -3,7 +3,7 @@
   "rewrites": [
     {
       "source": "/api/gas",
-      "destination": "https://script.google.com/macros/s/AKfycbyXudg8gofWtLq8YZdlDZaCUkDDFNegFiS5vKod349zL7vTvGYrkExtR9j5gsm8x6QwQQ/exec"
+      "destination": "https://script.google.com/macros/s/AKfycbzaGa6lBBCvmHShCMymnDm9Nd1Ht1gtZ83PpMdbvR7DeObLpzR60KySLttAC7zCV6KNVQ/exec"
     }
   ],
   "headers": [
