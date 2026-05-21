@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/gas",
+      "destination": "https://script.google.com/macros/s/AKfycbyXudg8gofWtLq8YZdlDZaCUkDDFNegFiS5vKod349zL7vTvGYrkExtR9j5gsm8x6QwQQ/exec"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type" }
+      ]
+    }
+  ]
+}

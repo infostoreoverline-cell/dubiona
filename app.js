@@ -3,7 +3,8 @@
  */
 
 // Constants & Configurations
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyXudg8gofWtLq8YZdlDZaCUkDDFNegFiS5vKod349zL7vTvGYrkExtR9j5gsm8x6QwQQ/exec";
+// const GAS_URL = "https://script.google.com/macros/s/AKfycbyXudg8gofWtLq8YZdlDZaCUkDDFNegFiS5vKod349zL7vTvGYrkExtR9j5gsm8x6QwQQ/exec";
+const GAS_URL = "/api/gas"; // Use relative path to utilize Vercel proxy and avoid CORS
 const ALPHA = 1e-6; // Learning rate for gradient descent
 const DEFAULT_PARAMS = {
     theta1: 0.05, // Resa Alimentazione
