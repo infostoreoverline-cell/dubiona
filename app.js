@@ -1127,12 +1127,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Record a calibration event
             const todayDate = new Date().toISOString().split('T')[0];
+            const catLabels = { FEMALE: 'Femmine Adulte', MALE: 'Maschi Adulti', SUBADULT: 'Sub-Adulte', MEDIUM: 'Neanidi Medie', SMALL: 'Neanidi Piccole', BABY: 'Micro-Neanidi' };
             await processNewMeasurement(
                 todayDate,
                 currentWeight,
                 0, // 0 food for calibration event
                 newAdultRatio,
-                `[Calibrazione] Conteggio reale: ${count} ${category}`
+                `[Calibrazione] Conteggio reale: ${count} ${catLabels[category] || category}`
             );
 
             calibModal.classList.remove('active');
