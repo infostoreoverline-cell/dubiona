@@ -567,8 +567,8 @@ const updateUI = () => {
 
             // Calcolo MSY (Maximum Sustainable Yield) a 30 gg
             // MSY = W_pred_naturale(30gg) - W_attuale
-            const naturalGrowth30 = calculatePrediction(currentWeight, 0, lastAdultRatio, 30, appState.params);
-            const msy30 = Math.max(0, naturalGrowth30 - currentWeight);
+            const naturalGrowth30 = calculatePrediction(latest.total_weight, 0, lastAdultRatio, 30, appState.params);
+            const msy30 = Math.max(0, naturalGrowth30 - latest.total_weight);
             const msyEl = document.getElementById('msyValueText');
             if (msyEl) {
                 msyEl.innerText = `${msy30.toFixed(1)} g`;
