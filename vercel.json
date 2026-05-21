@@ -1,11 +1,5 @@
 {
   "version": 2,
-  "rewrites": [
-    {
-      "source": "/api/gas",
-      "destination": "https://script.google.com/macros/s/AKfycbzaGa6lBBCvmHShCMymnDm9Nd1Ht1gtZ83PpMdbvR7DeObLpzR60KySLttAC7zCV6KNVQ/exec"
-    }
-  ],
   "headers": [
     {
       "source": "/(.*)",

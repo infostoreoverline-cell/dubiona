@@ -3,8 +3,7 @@
  */
 
 // Constants & Configurations
-// const GAS_URL = "https://script.google.com/macros/s/AKfycbyXudg8gofWtLq8YZdlDZaCUkDDFNegFiS5vKod349zL7vTvGYrkExtR9j5gsm8x6QwQQ/exec";
-const GAS_URL = "/api/gas"; // Use relative path to utilize Vercel proxy and avoid CORS
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzaGa6lBBCvmHShCMymnDm9Nd1Ht1gtZ83PpMdbvR7DeObLpzR60KySLttAC7zCV6KNVQ/exec";
 const ALPHA = 1e-6; // Learning rate for gradient descent
 const DEFAULT_PARAMS = {
     theta1: 0.05, // Resa Alimentazione
@@ -80,7 +79,7 @@ const loadInitialData = async () => {
     // Try to load from Google Sheets first
     try {
         showNotification("Sincronizzazione", "Download dati dal cloud...", "success");
-        const response = await fetch(GAS_URL);
+        const response = await fetch(GAS_URL, { redirect: "follow" });
 
         if (!response.ok) {
             console.warn(`Cloud fetch returned HTTP ${response.status}. URL might be invalid or permissions missing.`);
@@ -151,6 +150,10 @@ const saveMeasurement = async (measurement) => {
     try {
         const response = await fetch(GAS_URL, {
             method: 'POST',
+            redirect: 'follow',
+            headers: {
+                "Content-Type": "text/plain;charset=utf-8"
+            },
             body: JSON.stringify(measurement)
         });
 
