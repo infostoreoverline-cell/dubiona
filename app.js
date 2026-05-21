@@ -110,7 +110,11 @@ const loadInitialData = async () => {
     } catch (e) {
         console.warn("Could not fetch from GAS, falling back to local DB.", e);
         // Only show offline if it's a real network error (fetch threw an exception)
-        showNotification("Offline", "Nessuna connessione. Caricamento dati locali.", "warning");
+        if (!navigator.onLine) {
+            showNotification("Offline", "Nessuna connessione a Internet. Caricamento dati locali.", "warning");
+        } else {
+            showNotification("Errore di Rete", "Impossibile contattare il server cloud, ma sei online. Potrebbe essere un problema del server o di CORS. Caricamento dati locali.", "warning");
+        }
     }
 
     // Load measurements from local fallback
@@ -155,7 +159,11 @@ const saveMeasurement = async (measurement) => {
         }
     } catch (e) {
         console.error("Failed to save to Cloud:", e);
-        showNotification("Offline", "Impossibile contattare il server Cloud. Dati salvati in locale.", "warning");
+        if (!navigator.onLine) {
+            showNotification("Offline", "Nessuna connessione a Internet. Dati salvati in locale.", "warning");
+        } else {
+            showNotification("Errore di Rete", "Impossibile contattare il server Cloud (errore di rete). Dati salvati in locale.", "warning");
+        }
     }
 
     // Still save locally
