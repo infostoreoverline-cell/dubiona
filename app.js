@@ -3,7 +3,7 @@
  */
 
 // Constants & Configurations
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzaGa6lBBCvmHShCMymnDm9Nd1Ht1gtZ83PpMdbvR7DeObLpzR60KySLttAC7zCV6KNVQ/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxjPmvFfpfwfq9-l3FnxeOk_cbSdobW8pqN6Ob2DdUGxv6qt06l_8lFCFTqiZtQ_xfOnA/exec";
 const ALPHA = 1e-6; // Learning rate for gradient descent
 const DEFAULT_PARAMS = {
     theta1: 0.30, // Resa Alimentazione
