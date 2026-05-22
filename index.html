@@ -331,22 +331,30 @@
     <!-- MODAL FOR NEW ENTRY -->
     <div class="modal-overlay" id="entryModal">
         <div class="modal">
-            <h2>Nuova Rilevazione</h2>
+            <h2>Nuovo Evento</h2>
             <form id="entryForm">
+                <div class="form-group">
+                    <label for="inputType">Tipo di Evento</label>
+                    <select id="inputType" class="input-standard" required>
+                        <option value="pesata">Nuova Pesata (Controllo Reale)</option>
+                        <option value="cibo">Aggiunta Cibo</option>
+                        <option value="prelievo">Registra Prelievo</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label for="inputDate">Data</label>
                     <input type="date" id="inputDate" class="input-standard" required>
                 </div>
-                <div class="form-group">
+                <div class="form-group" id="groupWeight">
                     <label for="inputWeight">Peso Totale Colonia (grammi)</label>
                     <input type="number" step="0.1" id="inputWeight" class="input-standard" required>
                 </div>
-                <div class="form-group">
-                    <label for="inputFoodAmount">Cibo Somministrato Cumulativo (Ct) (grammi)</label>
+                <div class="form-group" id="groupFoodAmount">
+                    <label for="inputFoodAmount">Cibo Somministrato (grammi)</label>
                     <input type="number" step="0.1" id="inputFoodAmount" class="input-standard" required>
                 </div>
-                <div class="form-group">
-                    <label for="inputHarvestAmount">Prelievo Effettuato (grammi) - Opzionale</label>
+                <div class="form-group" id="groupHarvestAmount">
+                    <label for="inputHarvestAmount">Prelievo Effettuato (grammi)</label>
                     <input type="number" step="0.1" id="inputHarvestAmount" class="input-standard" value="0">
                 </div>
                 <div class="form-group">

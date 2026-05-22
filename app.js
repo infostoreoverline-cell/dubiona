@@ -226,7 +226,7 @@ const calculatePrediction = (lastWeight, foodAmount, adultRatio, delta_g, params
     return Math.max(0, w_pred);
 };
 
-const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount = 0, isNewBlood = false, isManualSubmit = false) => {
+const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount = 0, isNewBlood = false, isManualSubmit = false, eventType = 'pesata') => {
     const lastMeasurement = appState.measurements.length > 0 
         ? appState.measurements[appState.measurements.length - 1] 
         : null;
@@ -242,26 +242,33 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
 
         predictedWeight = calculatePrediction(lastMeasurement.total_weight, foodAmount, adultRatio, delta_g, appState.params, harvestAmount);
         
-        // 1. Calcolo dell'errore (Predizione del sistema - Realtà della bilancia)
-        const error = predictedWeight - realWeight;
-        
-        const pesoNeanidiIniziale = lastMeasurement.total_weight * 0.65;
-        const tempoProporzionale = delta_g / 30;
+        if (eventType === 'pesata' || eventType === 'calibrazione' || eventType === 'nuovo_sangue') {
+            // 1. Calcolo dell'errore (Predizione del sistema - Realtà della bilancia)
+            const error = predictedWeight - realWeight;
 
-        // 2. Discesa del Gradiente per ottimizzare i parametri
-        if (isManualSubmit) {
-            const newTheta1 = appState.params.theta1 - (error * foodAmount * ALPHA);
-            const newTheta2 = appState.params.theta2 - (error * pesoNeanidiIniziale * tempoProporzionale * ALPHA);
+            const pesoNeanidiIniziale = lastMeasurement.total_weight * 0.65;
+            const tempoProporzionale = delta_g / 30;
 
-            appState.params.theta1 = Math.max(0.01, newTheta1); // Prevent negative efficiencies, lower bound 0.01
-            appState.params.theta2 = Math.max(0.01, newTheta2);
-            saveParams(appState.params);
+            // 2. Discesa del Gradiente per ottimizzare i parametri
+            if (isManualSubmit) {
+                const newTheta1 = appState.params.theta1 - (error * foodAmount * ALPHA);
+                const newTheta2 = appState.params.theta2 - (error * pesoNeanidiIniziale * tempoProporzionale * ALPHA);
+
+                appState.params.theta1 = Math.max(0.01, newTheta1); // Prevent negative efficiencies, lower bound 0.01
+                appState.params.theta2 = Math.max(0.01, newTheta2);
+                saveParams(appState.params);
+            }
+
+            // Health Index: (Real / Pred) * 100
+            healthIndex = predictedWeight > 0 ? (realWeight / predictedWeight) * 100 : 100;
+
+            checkHealthThresholds(healthIndex);
+        } else {
+            // For purely informational events (cibo, prelievo), we update the real weight to the predicted weight
+            // so the gradient descent does not run with false delta=0.
+            realWeight = predictedWeight;
+            healthIndex = lastMeasurement.health_index; // Maintain last health index
         }
-
-        // Health Index: (Real / Pred) * 100
-        healthIndex = predictedWeight > 0 ? (realWeight / predictedWeight) * 100 : 100;
-        
-        checkHealthThresholds(healthIndex);
     }
 
     const measurement = {
@@ -273,7 +280,8 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
         adult_ratio: adultRatio,
         notes,
         predicted_weight: predictedWeight,
-        health_index: healthIndex
+        health_index: healthIndex,
+        event_type: eventType
     };
 
     await saveMeasurement(measurement);
@@ -1134,7 +1142,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 currentWeight,
                 0, // 0 food for calibration event
                 newAdultRatio,
-                `[Calibrazione] Conteggio reale: ${count} ${catLabels[category] || category}`
+                `[Calibrazione] Conteggio reale: ${count} ${catLabels[category] || category}`,
+                0,
+                false,
+                false,
+                'calibrazione'
             );
 
             calibModal.classList.remove('active');
@@ -1158,23 +1170,76 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set today's date as default
     document.getElementById('inputDate').valueAsDate = new Date();
 
-    fab.addEventListener('click', () => modal.classList.add('active'));
+    const inputType = document.getElementById('inputType');
+    const groupWeight = document.getElementById('groupWeight');
+    const groupFoodAmount = document.getElementById('groupFoodAmount');
+    const groupHarvestAmount = document.getElementById('groupHarvestAmount');
+
+    const updateFormVisibility = () => {
+        const type = inputType.value;
+        if (type === 'pesata') {
+            groupWeight.style.display = 'block';
+            groupFoodAmount.style.display = 'block';
+            groupHarvestAmount.style.display = 'block';
+            document.getElementById('inputWeight').required = true;
+            document.getElementById('inputFoodAmount').required = true;
+        } else if (type === 'cibo') {
+            groupWeight.style.display = 'none';
+            groupFoodAmount.style.display = 'block';
+            groupHarvestAmount.style.display = 'none';
+            document.getElementById('inputWeight').required = false;
+            document.getElementById('inputFoodAmount').required = true;
+        } else if (type === 'prelievo') {
+            groupWeight.style.display = 'none';
+            groupFoodAmount.style.display = 'none';
+            groupHarvestAmount.style.display = 'block';
+            document.getElementById('inputWeight').required = false;
+            document.getElementById('inputFoodAmount').required = false;
+        }
+    };
+
+    if (inputType) {
+        inputType.addEventListener('change', updateFormVisibility);
+        updateFormVisibility(); // Initialize
+    }
+
+    fab.addEventListener('click', () => {
+        modal.classList.add('active');
+        if (inputType) updateFormVisibility();
+    });
     btnCancel.addEventListener('click', () => modal.classList.remove('active'));
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        const eventType = inputType ? inputType.value : 'pesata';
         const date = document.getElementById('inputDate').value;
-        const weight = parseFloat(document.getElementById('inputWeight').value);
-        const foodAmount = parseFloat(document.getElementById('inputFoodAmount').value);
         const adultRatio = parseFloat(document.getElementById('inputAdultRatio').value);
         const notes = document.getElementById('inputNotes').value;
-        const harvestAmount = parseFloat(document.getElementById('inputHarvestAmount')?.value) || 0;
 
-        await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false, true);
+        let weight = 0;
+        let foodAmount = 0;
+        let harvestAmount = 0;
+
+        if (eventType === 'pesata') {
+            weight = parseFloat(document.getElementById('inputWeight').value);
+            foodAmount = parseFloat(document.getElementById('inputFoodAmount').value) || 0;
+            harvestAmount = parseFloat(document.getElementById('inputHarvestAmount')?.value) || 0;
+        } else if (eventType === 'cibo') {
+            foodAmount = parseFloat(document.getElementById('inputFoodAmount').value);
+        } else if (eventType === 'prelievo') {
+            harvestAmount = parseFloat(document.getElementById('inputHarvestAmount')?.value) || 0;
+        }
+
+        await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false, true, eventType);
         
         modal.classList.remove('active');
         form.reset();
         document.getElementById('inputDate').valueAsDate = new Date();
+
+        if (inputType) {
+            inputType.value = 'pesata';
+            updateFormVisibility();
+        }
 
         if (adultRatioSlider) adultRatioSlider.value = 0.35;
         if (adultRatioInput) adultRatioInput.value = 0.35;
@@ -1242,7 +1307,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 latest.adult_ratio,
                 "[Nuovo Sangue] Inseriti nuovi riproduttori per migliorare la genetica.",
                 0,
-                true
+                true,
+                false,
+                'nuovo_sangue'
             );
 
             showNotification("Successo", "Nuova linea genetica registrata con successo.", "success");

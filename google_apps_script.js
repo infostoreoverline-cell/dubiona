@@ -1,8 +1,11 @@
-var SHEET_NAME = 'Foglio1';
+var MASTER_SHEET = 'Timeline';
 
 function doGet(e) {
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(MASTER_SHEET);
+    if (!sheet) {
+        throw new Error("Foglio 'Timeline' non trovato");
+    }
     var data = sheet.getDataRange().getValues();
 
     if (data.length <= 1) {
@@ -39,9 +42,14 @@ function doPost(e) {
   try {
     if (e.postData && e.postData.contents) {
       var datiRicevuti = JSON.parse(e.postData.contents);
-      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var masterSheet = ss.getSheetByName(MASTER_SHEET);
 
-      var headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+      if (!masterSheet) {
+          throw new Error("Foglio 'Timeline' non trovato");
+      }
+
+      var headers = masterSheet.getRange(1, 1, 1, masterSheet.getLastColumn()).getValues()[0];
       var newRow = [];
 
       for (var i = 0; i < headers.length; i++) {
@@ -49,7 +57,41 @@ function doPost(e) {
         newRow.push(datiRicevuti[header] !== undefined ? datiRicevuti[header] : "");
       }
 
-      sheet.appendRow(newRow);
+      // Always save to Timeline
+      masterSheet.appendRow(newRow);
+
+      // Secondary Sheets Routing
+      var eventType = datiRicevuti['event_type'] || 'pesata'; // Default to pesata for retrocompatibility
+      var targetSheetName = null;
+
+      if (eventType === 'cibo') {
+          targetSheetName = 'Cibo';
+      } else if (eventType === 'prelievo') {
+          targetSheetName = 'Prelievi';
+      } else if (eventType === 'pesata' || eventType === 'calibrazione' || eventType === 'nuovo_sangue') {
+          targetSheetName = 'Pesate';
+      }
+
+      if (targetSheetName) {
+          var targetSheet = ss.getSheetByName(targetSheetName);
+          if (targetSheet) {
+              // Get headers for the target sheet
+              var targetHeaders = targetSheet.getRange(1, 1, 1, Math.max(1, targetSheet.getLastColumn())).getValues()[0];
+
+              // If target sheet is completely empty, initialize it with master headers
+              if (targetHeaders.length === 0 || (targetHeaders.length === 1 && targetHeaders[0] === "")) {
+                  targetSheet.appendRow(headers);
+                  targetHeaders = headers;
+              }
+
+              var targetNewRow = [];
+              for (var k = 0; k < targetHeaders.length; k++) {
+                  var th = targetHeaders[k];
+                  targetNewRow.push(datiRicevuti[th] !== undefined ? datiRicevuti[th] : "");
+              }
+              targetSheet.appendRow(targetNewRow);
+          }
+      }
 
       risposta = { status: "success", message: "Dati salvati con successo" };
     }
