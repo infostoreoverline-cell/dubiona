@@ -57,18 +57,23 @@ function doPost(e) {
         newRow.push(datiRicevuti[header] !== undefined ? datiRicevuti[header] : "");
       }
 
-      // Always save to Timeline
-      masterSheet.appendRow(newRow);
+      var eventType = datiRicevuti['event_type'] || 'pesata'; // Default to pesata for retrocompatibility
+
+      // Save to Timeline (MASTER_SHEET), except for 'calibrazione'
+      if (eventType !== 'calibrazione') {
+        masterSheet.appendRow(newRow);
+      }
 
       // Secondary Sheets Routing
-      var eventType = datiRicevuti['event_type'] || 'pesata'; // Default to pesata for retrocompatibility
       var targetSheetName = null;
 
       if (eventType === 'cibo') {
           targetSheetName = 'Cibo';
       } else if (eventType === 'prelievo') {
           targetSheetName = 'Prelievi';
-      } else if (eventType === 'pesata' || eventType === 'calibrazione' || eventType === 'nuovo_sangue') {
+      } else if (eventType === 'calibrazione') {
+          targetSheetName = 'Censimento';
+      } else if (eventType === 'pesata' || eventType === 'nuovo_sangue') {
           targetSheetName = 'Pesate';
       }
 
