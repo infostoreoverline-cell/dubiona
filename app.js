@@ -92,6 +92,12 @@ const loadInitialData = async () => {
             }
         } else {
             const jsonResponse = await response.json();
+
+            if (jsonResponse && jsonResponse.status === "error") {
+                showNotification("Errore Database Cloud", `Il server ha risposto: ${jsonResponse.message}. Assicurati che il foglio "Timeline" esista su Google Sheets.`, "alert");
+                throw new Error("Cloud database error: " + jsonResponse.message);
+            }
+
             const data = jsonResponse.data || jsonResponse; // Handle both {data: [...]} and [...]
             if (Array.isArray(data) && data.length > 0) {
                 appState.measurements = data.map(m => ({
@@ -116,10 +122,10 @@ const loadInitialData = async () => {
         }
     } catch (e) {
         console.warn("Could not fetch from GAS, falling back to local DB.", e);
-        // Only show offline if it's a real network error (fetch threw an exception)
+        // Only show offline if it's a real network error (fetch threw an exception) and not a logical error we just threw
         if (!navigator.onLine) {
             showNotification("Offline", "Nessuna connessione a Internet. Caricamento dati locali.", "warning");
-        } else {
+        } else if (!e.message || !e.message.includes("Cloud database error")) {
             showNotification("Errore di Rete", "Impossibile contattare il server cloud, ma sei online. Potrebbe essere un problema del server o di CORS. Caricamento dati locali.", "warning");
         }
     }
@@ -134,6 +140,11 @@ const loadInitialData = async () => {
             if (appState.measurements.length === 0) {
                 appState.measurements = measReq.result.sort((a, b) => new Date(a.date) - new Date(b.date));
             }
+
+            if (appState.measurements.length === 0) {
+                showNotification("Nessun Dato Trovato", "Sia il Cloud che il Database locale sono vuoti. Clicca sul pulsante '+' in basso a destra per inserire la tua prima Rilevazione.", "warning");
+            }
+
             resolve();
         };
     });
