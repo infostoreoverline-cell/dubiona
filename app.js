@@ -856,48 +856,65 @@ const updateUI = () => {
     document.getElementById('barSmall').style.width = `${(smCount/totalCount)*100 * 3}%`;
     document.getElementById('barBaby').style.width = `${(bCount/totalCount)*100 * 3}%`;
 
-    // Update Census Chart
+    // Update Census Chart (Modulo 4 — 4 stadi D.U.B.I.A.)
     const ctxCensus = document.getElementById('censusChart');
     if (ctxCensus) {
         if (appState.charts.census) {
             appState.charts.census.destroy();
         }
+
+        // Usa i 4 stadi ufficiali del Modulo 4
+        const censusModuleRef = D();
+        let chartLabels, chartData, chartColors;
+        if (censusModuleRef && appState.measurements.length > 0) {
+            const lm = appState.measurements[appState.measurements.length - 1];
+            const cd = censusModuleRef.census(lm.total_weight, lm.adult_ratio || 0.35);
+            chartLabels = [
+                `Femmine (${cd.N_femmine})`,
+                `Maschi (${cd.N_maschi})`,
+                `Neanidi Medie (${cd.N_medie})`,
+                `Baby (${cd.N_baby})`
+            ];
+            chartData   = [cd.N_femmine, cd.N_maschi, cd.N_medie, cd.N_baby];
+            chartColors = ['#9b59b6', '#3498db', '#2ecc71', '#f1c40f'];
+        } else {
+            chartLabels = ['Femmine', 'Maschi', 'Neanidi Medie', 'Baby'];
+            chartData   = [fCount, mCount, medCount, bCount];
+            chartColors = ['#9b59b6', '#3498db', '#2ecc71', '#f1c40f'];
+        }
+
         appState.charts.census = new Chart(ctxCensus.getContext('2d'), {
             type: 'doughnut',
             data: {
-                labels: ['Femmine', 'Maschi', 'Sub-Adulte', 'Medie', 'Piccole', 'Micro'],
+                labels: chartLabels,
                 datasets: [{
-                    data: [fCount, mCount, saCount, medCount, smCount, bCount],
-                    backgroundColor: [
-                        '#9b59b6', // var(--accent-purple)
-                        '#8e44ad', // darker purple
-                        '#3498db', // blue
-                        '#2ecc71', // var(--accent-green)
-                        '#27ae60', // darker green
-                        '#f1c40f'  // yellow
-                    ],
+                    data: chartData,
+                    backgroundColor: chartColors,
                     borderWidth: 0,
-                    hoverOffset: 4
+                    hoverOffset: 8
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: { top: 8, bottom: 8 } },
                 plugins: {
                     legend: {
-                        position: 'right',
+                        position: 'bottom',
                         labels: {
                             color: 'white',
-                            font: { size: 10 }
+                            font: { size: 12 },
+                            padding: 16,
+                            usePointStyle: true,
+                            pointStyleWidth: 10
                         }
                     },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
                                 const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                                const value = context.raw;
-                                const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-                                return `${context.label}: ${value} (${percentage}%)`;
+                                const pct = total > 0 ? Math.round((context.raw / total) * 100) : 0;
+                                return ` ${context.label}: ${pct}%`;
                             }
                         }
                     }

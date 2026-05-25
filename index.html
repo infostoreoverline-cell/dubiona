@@ -221,8 +221,8 @@
                 <h3>Distribuzione Visiva (Grafico)</h3>
                 <p class="subtitle-text">Calcolata in base alla biomassa totale e alle costanti specifiche.</p>
                 
-                <div class="chart-card" style="height: 250px; margin-bottom: 1rem;">
-                    <canvas id="censusChart"></canvas>
+                <div style="position: relative; width: 100%; height: 300px; overflow: visible; margin-bottom: 1rem;">
+                    <canvas id="censusChart" style="max-width:100%; box-sizing:border-box;"></canvas>
                 </div>
                 <div id="maturationTimerCard" style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--accent-purple); display: none;">
                     ⏱️ <strong>Timer di Maturazione:</strong> <span id="maturationTimerText">...</span>

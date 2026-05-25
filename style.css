@@ -156,6 +156,7 @@ main {
     position: relative;
     height: 300px;
     width: 100%;
+    overflow: visible;
 }
 
 .delta-g-card .slider-container {
@@ -570,7 +571,7 @@ button, input[type="text"], input[type="number"], input[type="date"], select, te
     }
 
     .chart-card {
-        height: 250px;
+        height: 320px;
     }
 
     .bottom-params-section {
