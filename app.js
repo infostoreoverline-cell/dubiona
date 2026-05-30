@@ -2707,6 +2707,10 @@ window.showColonyDetails = (id) => {
     document.getElementById('detailColonyWeight').innerText = colony.current_weight ? `${colony.current_weight.toFixed(1)} g` : '-- g';
     document.getElementById('detailColonyMales').innerText = colony.males_count || '--';
     document.getElementById('detailColonyFemales').innerText = colony.females_count || '--';
+    document.getElementById('detailColonySubadults').innerText = colony.subadults_count || '--';
+    document.getElementById('detailColonyMedium').innerText = colony.medium_count || '--';
+    document.getElementById('detailColonySmall').innerText = colony.small_count || '--';
+    document.getElementById('detailColonyBaby').innerText = colony.baby_count || '--';
     document.getElementById('detailColonyNotes').innerText = colony.notes || 'Nessuna nota.';
 
     const detailCard = document.getElementById('colonyDetailCard');
@@ -2767,15 +2771,30 @@ const renderColonyPredictionChart = (colony, days) => {
         colonyPredictionChartInstance.destroy();
     }
     
-    // Fallback on global se mancano i conteggi
+    // Calculation of W_t and A_t purely based on specific colony's known data
     let W_t = colony.current_weight || 10;
+    
+    // Adult biomass
     let mCount = colony.males_count || 0;
     let fCount = colony.females_count || 0;
-    
     let W_adulti = (mCount * MASS.MALE) + (fCount * MASS.FEMALE);
-    let A_t = W_adulti / W_t;
-    if (W_adulti === 0 || A_t > 1) {
-        A_t = appState.params.adultRatio || (typeof DUBIA !== 'undefined' ? DUBIA.AT_DEFAULT : 0.35);
+    
+    // Nymph biomass
+    let subCount = colony.subadults_count || 0;
+    let medCount = colony.medium_count || 0;
+    let smCount = colony.small_count || 0;
+    let bCount = colony.baby_count || 0;
+    let W_ninfe = (subCount * MASS.SUBADULT) + (medCount * MASS.MEDIUM) + (smCount * MASS.SMALL) + (bCount * MASS.BABY);
+    
+    let W_totale_calcolato = W_adulti + W_ninfe;
+    
+    let A_t = appState.params.adultRatio || 0.35;
+    if (W_totale_calcolato > 0) {
+        A_t = W_adulti / W_totale_calcolato;
+        // Aggiorniamo W_t con il calcolato se non era stato forzato un peso maggiore
+        if (!colony.current_weight || Math.abs(colony.current_weight - W_totale_calcolato) < W_totale_calcolato * 0.2) {
+            W_t = W_totale_calcolato;
+        }
     }
     
     const dubiaModule = D();
@@ -2912,10 +2931,12 @@ document.addEventListener('DOMContentLoaded', () => {
         btnNuovaColonia.addEventListener('click', () => {
             document.getElementById('colonyForm').reset();
             document.getElementById('colonyId').value = '';
-            const mInput = document.getElementById('colonyMales');
-            const fInput = document.getElementById('colonyFemales');
-            if (mInput) mInput.value = '';
-            if (fInput) fInput.value = '';
+            document.getElementById('colonyMales').value = '';
+            document.getElementById('colonyFemales').value = '';
+            document.getElementById('colonySubadults').value = '';
+            document.getElementById('colonyMedium').value = '';
+            document.getElementById('colonySmall').value = '';
+            document.getElementById('colonyBaby').value = '';
             document.getElementById('colonyModalTitle').innerText = 'Nuova Colonia';
             document.getElementById('colonyModal').classList.add('active');
         });
@@ -2931,11 +2952,26 @@ document.addEventListener('DOMContentLoaded', () => {
         colonyForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const idVal = document.getElementById('colonyId').value;
+            const mCount = parseInt(document.getElementById('colonyMales')?.value) || 0;
+            const fCount = parseInt(document.getElementById('colonyFemales')?.value) || 0;
+            const subCount = parseInt(document.getElementById('colonySubadults')?.value) || 0;
+            const medCount = parseInt(document.getElementById('colonyMedium')?.value) || 0;
+            const smCount = parseInt(document.getElementById('colonySmall')?.value) || 0;
+            const bCount = parseInt(document.getElementById('colonyBaby')?.value) || 0;
+            
+            const totalIndividuals = mCount + fCount + subCount + medCount + smCount + bCount;
+            const estimatedWeight = totalIndividuals > 0 ? 
+                (mCount * MASS.MALE) + (fCount * MASS.FEMALE) + (subCount * MASS.SUBADULT) + 
+                (medCount * MASS.MEDIUM) + (smCount * MASS.SMALL) + (bCount * MASS.BABY) : null;
+
             const colony = {
                 name:  document.getElementById('colonyName').value.trim(),
                 type:  document.getElementById('colonyType').value,
                 notes: document.getElementById('colonyNotes').value.trim()
             };
+
+            let isNewWithWeight = false;
+
             if (idVal) {
                 colony.id = Number(idVal);
                 // Preserve existing metrics
@@ -2944,16 +2980,46 @@ document.addEventListener('DOMContentLoaded', () => {
                     colony.current_weight = existing.current_weight;
                     colony.males_count = existing.males_count;
                     colony.females_count = existing.females_count;
+                    colony.subadults_count = existing.subadults_count;
+                    colony.medium_count = existing.medium_count;
+                    colony.small_count = existing.small_count;
+                    colony.baby_count = existing.baby_count;
                     colony.creation_date = existing.creation_date;
                 }
             } else {
                 colony.creation_date = new Date().toISOString().split('T')[0];
+                if (estimatedWeight) {
+                    colony.current_weight = estimatedWeight;
+                    colony.males_count = mCount;
+                    colony.females_count = fCount;
+                    colony.subadults_count = subCount;
+                    colony.medium_count = medCount;
+                    colony.small_count = smCount;
+                    colony.baby_count = bCount;
+                    isNewWithWeight = true;
+                }
             }
 
             await saveColony(colony);
             document.getElementById('colonyModal').classList.remove('active');
             updateColoniesUI();
-            showNotification('Colonia Salvata', `${colony.name} salvata con successo.`, 'success');
+
+            if (isNewWithWeight) {
+                // Aggiorna il peso globale come SOMMA di tutte le colonie
+                let globalSum = 0;
+                appState.colonies.forEach(c => globalSum += (c.current_weight || 0));
+                
+                const globalNotes = `[${colony.name}] Creazione con stima automatica del peso (${estimatedWeight.toFixed(1)}g) basata su ${totalIndividuals} individui.`;
+                const date = new Date().toISOString().split('T')[0];
+                let A_t = appState.params.adultRatio || 0.35;
+                if (estimatedWeight > 0) {
+                    A_t = ((mCount * MASS.MALE) + (fCount * MASS.FEMALE)) / estimatedWeight;
+                }
+                
+                await processNewMeasurement(date, globalSum, 0, A_t, globalNotes, 0, false, true, 'pesata');
+            }
+
+            showNotification(idVal ? 'Aggiornata' : 'Creata', `Colonia ${colony.name} salvata con successo.`, 'success');
         });
     }
 

@@ -432,14 +432,30 @@
                     <button class="btn-standard" id="btnDetailClose" style="padding: 0.4rem 0.8rem;">Chiudi</button>
                 </div>
                 
-                <div class="params-grid" style="margin-bottom: 1rem;">
+                <div class="params-grid" style="margin-bottom: 1rem; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));">
                     <div class="param">
                         <span class="param-label">Peso Attuale</span>
                         <span class="param-value" id="detailColonyWeight">-- g</span>
                     </div>
                     <div class="param">
-                        <span class="param-label">Maschi / Femmine</span>
+                        <span class="param-label">Adulti</span>
                         <span class="param-value" style="font-size: 1rem;"><span id="detailColonyMales">--</span> ♂ / <span id="detailColonyFemales">--</span> ♀</span>
+                    </div>
+                    <div class="param">
+                        <span class="param-label">Sub-Adulte</span>
+                        <span class="param-value" style="font-size: 1rem;" id="detailColonySubadults">--</span>
+                    </div>
+                    <div class="param">
+                        <span class="param-label">N. Medie</span>
+                        <span class="param-value" style="font-size: 1rem;" id="detailColonyMedium">--</span>
+                    </div>
+                    <div class="param">
+                        <span class="param-label">N. Piccole</span>
+                        <span class="param-value" style="font-size: 1rem;" id="detailColonySmall">--</span>
+                    </div>
+                    <div class="param">
+                        <span class="param-label">Baby</span>
+                        <span class="param-value" style="font-size: 1rem;" id="detailColonyBaby">--</span>
                     </div>
                 </div>
 
@@ -837,17 +853,35 @@
                         <option value="Altro">Altro</option>
                     </select>
                 </div>
-                <div class="form-group" style="display:flex; gap:1rem; margin-bottom: 0.5rem;">
+                <div class="form-group" style="display:flex; gap:0.5rem; margin-bottom: 0.5rem;">
                     <div style="flex:1;">
-                        <label for="colonyMales">Maschi (N°)</label>
-                        <input type="number" id="colonyMales" class="input-standard" min="0" placeholder="Opzionale">
+                        <label for="colonyMales" style="font-size:0.8rem;">Maschi</label>
+                        <input type="number" id="colonyMales" class="input-standard" min="0" placeholder="N°">
                     </div>
                     <div style="flex:1;">
-                        <label for="colonyFemales">Femmine (N°)</label>
-                        <input type="number" id="colonyFemales" class="input-standard" min="0" placeholder="Opzionale">
+                        <label for="colonyFemales" style="font-size:0.8rem;">Femmine</label>
+                        <input type="number" id="colonyFemales" class="input-standard" min="0" placeholder="N°">
+                    </div>
+                    <div style="flex:1;">
+                        <label for="colonySubadults" style="font-size:0.8rem;">Sub-Adulte</label>
+                        <input type="number" id="colonySubadults" class="input-standard" min="0" placeholder="N°">
                     </div>
                 </div>
-                <p class="subtitle-text" style="font-size: 0.8rem; margin-top:-0.2rem; margin-bottom: 1rem;">Inserendo il numero di individui, il sistema ne stimerà automaticamente il peso iniziale (non dovrai inserire la pesata).</p>
+                <div class="form-group" style="display:flex; gap:0.5rem; margin-bottom: 0.5rem;">
+                    <div style="flex:1;">
+                        <label for="colonyMedium" style="font-size:0.8rem;">N. Medie</label>
+                        <input type="number" id="colonyMedium" class="input-standard" min="0" placeholder="N°">
+                    </div>
+                    <div style="flex:1;">
+                        <label for="colonySmall" style="font-size:0.8rem;">N. Piccole</label>
+                        <input type="number" id="colonySmall" class="input-standard" min="0" placeholder="N°">
+                    </div>
+                    <div style="flex:1;">
+                        <label for="colonyBaby" style="font-size:0.8rem;">Baby</label>
+                        <input type="number" id="colonyBaby" class="input-standard" min="0" placeholder="N°">
+                    </div>
+                </div>
+                <p class="subtitle-text" style="font-size: 0.8rem; margin-top:-0.2rem; margin-bottom: 1rem;">Inserendo il numero di individui, il grafico previsionale userà ESATTAMENTE i dati di questa colonia e calcolerà in automatico il peso.</p>
 
                 <div class="form-group">
                     <label for="colonyNotes">Note Generali</label>
