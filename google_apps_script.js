@@ -72,8 +72,8 @@ function doPost(e) {
 
       var eventType = datiRicevuti['event_type'] || 'pesata'; // Default to pesata for retrocompatibility
 
-      // Save to Timeline (MASTER_SHEET), except for 'calibrazione' and 'colonia'
-      if (eventType !== 'calibrazione' && eventType !== 'colonia') {
+      // Save to Timeline (MASTER_SHEET), except for 'calibrazione', 'colonia', 'colonia_sync'
+      if (eventType !== 'calibrazione' && eventType !== 'colonia' && eventType !== 'colonia_sync') {
         masterSheet.appendRow(newRow);
       }
 
@@ -88,7 +88,7 @@ function doPost(e) {
           targetSheetName = 'Censimento';
       } else if (eventType === 'pesata' || eventType === 'nuovo_sangue') {
           targetSheetName = 'Pesate';
-      } else if (eventType === 'colonia') {
+      } else if (eventType === 'colonia' || eventType === 'colonia_sync') {
           targetSheetName = 'Colonie';
       }
 

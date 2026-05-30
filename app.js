@@ -2078,8 +2078,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             const colony = appState.colonies.find(c => c.id === colonyId);
             if (colony) {
                 let oldWeight = colony.current_weight || 0;
+                let deltaWeight = 0;
                 
                 if (eventType === 'pesata') {
+                    deltaWeight = weight - oldWeight;
                     colony.current_weight = weight;
                 } else if (eventType === 'prelievo') {
                     colony.current_weight = Math.max(0, oldWeight - harvestAmount);
@@ -2089,12 +2091,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 await saveColony(colony);
                 
-                // Calcola il nuovo peso globale (somma esatta delle scatole attuali)
-                let globalSum = 0;
-                appState.colonies.forEach(c => globalSum += (c.current_weight || 0));
+                // INVECE della somma, applichiamo il DELTA (differenza) al peso globale per non sovrascrivere le blatte non assegnate.
+                let globalOldWeight = appState.measurements.length > 0 ? appState.measurements[appState.measurements.length - 1].total_weight : 0;
+                let newGlobalWeight = globalOldWeight;
+                
+                if (eventType === 'pesata') {
+                    newGlobalWeight = Math.max(0, globalOldWeight + deltaWeight);
+                } else if (eventType === 'prelievo') {
+                    newGlobalWeight = Math.max(0, globalOldWeight - harvestAmount);
+                } // Per il cibo ci pensa già processNewMeasurement
                 
                 const globalNotes = `[${colony.name}] ${notes}`;
-                await processNewMeasurement(date, globalSum, foodAmount, adultRatio, globalNotes, harvestAmount, false, true, eventType);
+                // Registra l'evento a livello globale con il nuovo peso calcolato
+                await processNewMeasurement(date, newGlobalWeight, foodAmount, adultRatio, globalNotes, harvestAmount, false, true, eventType);
             }
         } else {
             // Globale standard
@@ -3003,21 +3012,6 @@ document.addEventListener('DOMContentLoaded', () => {
             await saveColony(colony);
             document.getElementById('colonyModal').classList.remove('active');
             updateColoniesUI();
-
-            if (isNewWithWeight) {
-                // Aggiorna il peso globale come SOMMA di tutte le colonie
-                let globalSum = 0;
-                appState.colonies.forEach(c => globalSum += (c.current_weight || 0));
-                
-                const globalNotes = `[${colony.name}] Creazione con stima automatica del peso (${estimatedWeight.toFixed(1)}g) basata su ${totalIndividuals} individui.`;
-                const date = new Date().toISOString().split('T')[0];
-                let A_t = appState.params.adultRatio || 0.35;
-                if (estimatedWeight > 0) {
-                    A_t = ((mCount * MASS.MALE) + (fCount * MASS.FEMALE)) / estimatedWeight;
-                }
-                
-                await processNewMeasurement(date, globalSum, 0, A_t, globalNotes, 0, false, true, 'pesata');
-            }
 
             showNotification(idVal ? 'Aggiornata' : 'Creata', `Colonia ${colony.name} salvata con successo.`, 'success');
         });
