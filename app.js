@@ -2806,23 +2806,79 @@ const renderColonyPredictionChart = (colony, days) => {
         }
     }
     
-    const dubiaModule = D();
-    const theta1 = appState.params.theta1;
-    const theta2 = appState.params.theta2;
+    const theta2 = appState.params.theta2 || 1.05;
 
     const labels = [];
     const dataBiomass = [];
     const dataPop = [];
 
+    // Initialize buckets
+    let simM = mCount;
+    let simF = fCount;
+    let simSub = subCount;
+    let simMed = medCount;
+    let simSmall = smCount;
+    let simBaby = bCount;
+    
+    // If we only have weight and no counts, fallback to census
+    if (simM + simF + simSub + simMed + simSmall + simBaby === 0 && W_t > 0) {
+        const dubiaModule = D();
+        if (dubiaModule) {
+            let initialCensus = dubiaModule.census(W_t, A_t);
+            simM = initialCensus.N_maschi;
+            simF = initialCensus.N_femmine;
+            simSub = initialCensus.N_medie * 0.2; // Approssimazione dal modello piramidale
+            simMed = initialCensus.N_medie * 0.8;
+            simSmall = initialCensus.N_baby * 0.3;
+            simBaby = initialCensus.N_baby * 0.7;
+        }
+    }
+
+    // Parametri biologici
+    const baseTheta2 = 1.05;
+    const envFactor = Math.max(0.1, theta2 / baseTheta2); // Scaliamo metabolismo in base a theta2
+
+    const RATE_BABY_SMALL = 1 / 30;
+    const RATE_SMALL_MED = 1 / 45;
+    const RATE_MED_SUB = 1 / 45;
+    const RATE_SUB_ADULT = 1 / 30;
+    const BIRTH_RATE_PER_FEMALE = 25 / 45; 
+    const MORTALITY_ADULT = 1 / 400;
+
     // Simulate
     const stepSize = Math.max(1, Math.floor(days / 15));
     for (let day = 0; day <= days; day += stepSize) {
         labels.push(day);
-        let predW = dubiaModule ? dubiaModule.feedForward(W_t, 0, A_t, day, theta1, theta2) : W_t;
-        dataBiomass.push(predW);
         
-        let cns = dubiaModule ? dubiaModule.census(predW, A_t) : { N_totale: Math.round(predW / 0.5) };
-        dataPop.push(cns.N_totale);
+        let current_W = (simM * MASS.MALE) + (simF * MASS.FEMALE) + (simSub * MASS.SUBADULT) + (simMed * MASS.MEDIUM) + (simSmall * MASS.SMALL) + (simBaby * MASS.BABY);
+        let current_N = simM + simF + simSub + simMed + simSmall + simBaby;
+        
+        dataBiomass.push(current_W);
+        dataPop.push(current_N);
+        
+        // Simula lo step successivo
+        let effDays = stepSize * envFactor; // Effetto di theta2 sulla biologia
+        
+        // Nascite
+        let newBabies = simF * BIRTH_RATE_PER_FEMALE * effDays;
+        
+        // Transizioni (con formula continua per stabilità su step grandi)
+        let b_to_s = simBaby * (1 - Math.pow(1 - RATE_BABY_SMALL, effDays));
+        let s_to_m = simSmall * (1 - Math.pow(1 - RATE_SMALL_MED, effDays));
+        let m_to_sub = simMed * (1 - Math.pow(1 - RATE_MED_SUB, effDays));
+        let sub_to_a = simSub * (1 - Math.pow(1 - RATE_SUB_ADULT, effDays));
+        
+        let m_deaths = simM * (1 - Math.pow(1 - MORTALITY_ADULT, effDays));
+        let f_deaths = simF * (1 - Math.pow(1 - MORTALITY_ADULT, effDays));
+        
+        // Aggiorna buckets
+        simBaby = Math.max(0, simBaby + newBabies - b_to_s);
+        simSmall = Math.max(0, simSmall + b_to_s - s_to_m);
+        simMed = Math.max(0, simMed + s_to_m - m_to_sub);
+        simSub = Math.max(0, simSub + m_to_sub - sub_to_a);
+        
+        simM = Math.max(0, simM + (sub_to_a * 0.5) - m_deaths);
+        simF = Math.max(0, simF + (sub_to_a * 0.5) - f_deaths);
     }
 
     colonyPredictionChartInstance = new Chart(canvas, {
