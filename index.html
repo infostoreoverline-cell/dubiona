@@ -837,6 +837,18 @@
                         <option value="Altro">Altro</option>
                     </select>
                 </div>
+                <div class="form-group" style="display:flex; gap:1rem; margin-bottom: 0.5rem;">
+                    <div style="flex:1;">
+                        <label for="colonyMales">Maschi (N°)</label>
+                        <input type="number" id="colonyMales" class="input-standard" min="0" placeholder="Opzionale">
+                    </div>
+                    <div style="flex:1;">
+                        <label for="colonyFemales">Femmine (N°)</label>
+                        <input type="number" id="colonyFemales" class="input-standard" min="0" placeholder="Opzionale">
+                    </div>
+                </div>
+                <p class="subtitle-text" style="font-size: 0.8rem; margin-top:-0.2rem; margin-bottom: 1rem;">Inserendo il numero di individui, il sistema ne stimerà automaticamente il peso iniziale (non dovrai inserire la pesata).</p>
+
                 <div class="form-group">
                     <label for="colonyNotes">Note Generali</label>
                     <textarea id="colonyNotes" class="input-standard" rows="2" placeholder="Dimensioni vasca, origine, etc."></textarea>

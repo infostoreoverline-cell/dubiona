@@ -2912,6 +2912,10 @@ document.addEventListener('DOMContentLoaded', () => {
         btnNuovaColonia.addEventListener('click', () => {
             document.getElementById('colonyForm').reset();
             document.getElementById('colonyId').value = '';
+            const mInput = document.getElementById('colonyMales');
+            const fInput = document.getElementById('colonyFemales');
+            if (mInput) mInput.value = '';
+            if (fInput) fInput.value = '';
             document.getElementById('colonyModalTitle').innerText = 'Nuova Colonia';
             document.getElementById('colonyModal').classList.add('active');
         });
