@@ -1277,7 +1277,7 @@ const updateAlignmentStatus = () => {
             btnReset.onclick = () => {
                 delete appState.params.manualCalibrations;
                 saveParams(appState.params);
-                updateDashboard();
+                updateUI();
                 updateColoniesUI();
                 showNotification('Reset Completato', 'Le calibrazioni manuali sono state rimosse. Il censimento è tornato in modalità puro Modulo 4.', 'success');
             };
@@ -1332,7 +1332,7 @@ const updateAlignmentStatus = () => {
             saveParams(appState.params);
             
             saveMeasurement(latest).then(() => {
-                updateDashboard();
+                updateUI();
                 updateColoniesUI();
                 showNotification('Sincronizzazione Riuscita', 'Il censimento ora riflette la realtà empirica delle tue colonie mantenendo il peso invariato.', 'success');
             });
@@ -1462,10 +1462,10 @@ const updateUI = () => {
     const healthIndicator = document.getElementById('healthIndicator');
     if (healthIndicator) {
         healthIndicator.className = 'health-indicator';
-        if (H_live >= HEALTH_THRESHOLD_WARNING) {
-            if (H_live >= HEALTH_THRESHOLD_WARNING && H_live < HEALTH_THRESHOLD_WARNING) {
-                healthIndicator.classList.add('warning');
-            }
+        if (H_live < HEALTH_THRESHOLD_ALERT) {
+            healthIndicator.classList.add('alert');
+        } else if (H_live < HEALTH_THRESHOLD_WARNING) {
+            healthIndicator.classList.add('warning');
         }
     }
 
@@ -2240,7 +2240,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             // Apply a slight bump to theta2 to simulate learning from manual intervention
-            appState.params.theta2 = appState.params.theta2 * 1.05;
+            appState.params.theta2 = Math.min(5.0, appState.params.theta2 * 1.05);
 
             if (!appState.params.manualCalibrations) {
                 appState.params.manualCalibrations = {};
@@ -2529,11 +2529,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 btn.innerText = "Salvataggio...";
                 btn.disabled = true;
 
+                const latestM = appState.measurements.length > 0 ? appState.measurements[appState.measurements.length - 1] : null;
+                const adultRatioToUse = latestM ? (latestM.adult_ratio || 0.35) : 0.35;
+
                 await processNewMeasurement(
                     today,
                     newCurrentWeight,
                     0,
-                    appState.params.manualCalibrations ? null : 0.35,
+                    adultRatioToUse,
                     noteStr,
                     amount,
                     false,
@@ -3177,7 +3180,9 @@ const renderColonyPredictionChart = (colony, days) => {
     
     let W_totale_calcolato = W_adulti + W_ninfe;
     
-    let A_t = appState.params.adultRatio || 0.35;
+    const latestForAt = appState.measurements && appState.measurements.length > 0 ? appState.measurements[appState.measurements.length - 1] : null;
+    let A_t = latestForAt ? (latestForAt.adult_ratio || 0.35) : 0.35;
+
     if (W_totale_calcolato > 0) {
         A_t = W_adulti / W_totale_calcolato;
         // Aggiorniamo W_t con il calcolato se non era stato forzato un peso maggiore
@@ -3427,7 +3432,6 @@ const generateQRCode = (colony) => {
     document.getElementById('qrDisplayModal').classList.add('active');
 };
 
-/**
 /**
  * Gestione scanner QR — usa Html5Qrcode (API low-level)
  * per avviare direttamente la fotocamera posteriore senza
@@ -3825,7 +3829,9 @@ processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, 
     let females_count = 0;
 
     const colonySelect = document.getElementById('inputColonyId');
-    if (colonySelect && colonySelect.value !== "") {
+    const isEntryModalActive = document.getElementById('entryModal') && document.getElementById('entryModal').classList.contains('active');
+
+    if (isEntryModalActive && colonySelect && colonySelect.value !== "") {
         colony_id = Number(colonySelect.value);
         males_count = Number(document.getElementById('inputColonyMales').value) || 0;
         females_count = Number(document.getElementById('inputColonyFemales').value) || 0;
@@ -3858,7 +3864,9 @@ processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, 
 const originalSaveMeasurement = saveMeasurement;
 saveMeasurement = async (measurement) => {
     const colonySelect = document.getElementById('inputColonyId');
-    if (colonySelect && colonySelect.value !== "") {
+    const isEntryModalActive = document.getElementById('entryModal') && document.getElementById('entryModal').classList.contains('active');
+
+    if (isEntryModalActive && colonySelect && colonySelect.value !== "") {
         measurement.colony_id = Number(colonySelect.value);
         measurement.males_count = Number(document.getElementById('inputColonyMales').value) || 0;
         measurement.females_count = Number(document.getElementById('inputColonyFemales').value) || 0;
