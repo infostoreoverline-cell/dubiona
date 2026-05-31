@@ -1020,7 +1020,7 @@ const calculateColonyMetrics = (W_t, A_t, params) => {
         censusData.sex_ratio        = censusData.N_femmine > 0 ? censusData.N_maschi / censusData.N_femmine : 0;
     }
 
-    // Applica calibrazioni manuali se presenti (sovrascrivono il Modulo 4)
+    // Applica calibrazioni manuali se presenti (sovrascrivono il Modulo 4 sia localmente che nel censusData ritornato)
     const calibs = (params && params.manualCalibrations) || {};
     const fCount   = calibs['FEMALE']   !== undefined ? calibs['FEMALE']   : censusData.N_femmine;
     const mCount   = calibs['MALE']     !== undefined ? calibs['MALE']     : censusData.N_maschi;
@@ -1029,6 +1029,20 @@ const calculateColonyMetrics = (W_t, A_t, params) => {
     const smCount  = calibs['SMALL']    !== undefined ? calibs['SMALL']    : 0;
     const bCount   = calibs['BABY']     !== undefined ? calibs['BABY']     : censusData.N_baby;
     const totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
+
+    // IMPORTANTISSIMO: Dobbiamo iniettare i valori ricalibrati nel censusData stesso,
+    // altrimenti la tabella UI e i controlli incrociati continueranno a mostrare i vecchi valori puramente matematici!
+    censusData = {
+        ...censusData,
+        N_femmine: fCount,
+        N_maschi: mCount,
+        N_medie: medCount,
+        N_baby: bCount,
+        N_totale_adulti: fCount + mCount,
+        N_totale_neanidi: medCount + bCount,
+        N_totale: fCount + mCount + medCount + bCount,
+        sex_ratio: fCount > 0 ? mCount / fCount : 0
+    };
 
     // ── Valore economico (usa prezzi personalizzati da appState) ───────────
     const prices = appState.customPrices || DEFAULT_PRICES;
