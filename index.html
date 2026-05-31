@@ -194,6 +194,16 @@
                 </div>
             </div>
 
+            <div class="card" id="alignmentStatusCard">
+                <h3>Stato Allineamento Realtà-Teoria</h3>
+                <p class="subtitle-text">Verifica se i conteggi fisici delle colonie combaciano con il censimento teorico.</p>
+                <div id="alignmentStatusContainer" style="padding: 1rem; border-radius: 8px; margin-top: 1rem; background-color: rgba(255,255,255,0.05); border: 1px solid var(--border-color);">
+                    <div id="alignmentStatusMessage" style="font-weight: 500; margin-bottom: 0.5rem;">Analisi in corso...</div>
+                    <div id="alignmentStatusDetails" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;"></div>
+                    <button id="btnSyncCensus" class="btn-standard" style="display: none; background-color: var(--accent-purple); width: 100%;">Sincronizza Censimento con Colonie</button>
+                </div>
+            </div>
+
             <div class="card">
                 <h3>Censimento Demografico — Tabella di Output</h3>
                 <p class="subtitle-text">Calcolato secondo il Modulo 4 del Teorema D.U.B.I.A. &nbsp;·&nbsp; Aggiornato automaticamente ad ogni pesata</p>
@@ -938,7 +948,9 @@
                 </div>
                 <p class="subtitle-text" style="font-size: 0.8rem; margin-top:-0.2rem; margin-bottom: 0.5rem;">Inserendo il numero di individui, il grafico previsionale userà ESATTAMENTE i dati di questa colonia e calcolerà in automatico il peso.</p>
                 <div id="colonyEstimatedWeightLive" style="color: var(--accent-green); font-weight: bold; font-size: 0.9rem; margin-bottom: 1rem; padding: 0.5rem; background: rgba(46, 204, 113, 0.1); border-radius: 4px; display: none;">
-                    Stima Peso: 0.0 g
+                    Stima Peso: 0.00 g
+                </div>
+                <div id="colonyCountWarning" style="color: #F2C94C; font-size: 0.85rem; margin-bottom: 1rem; padding: 0.5rem; background: rgba(242, 201, 76, 0.1); border: 1px solid #F2C94C; border-radius: 4px; display: none;">
                 </div>
 
                 <div class="form-group">

@@ -1081,6 +1081,74 @@ const calculateColonyMetrics = (W_t, A_t, params) => {
 };
 
 /**
+ * Rileva discrepanze di biomassa e quantità tra censimento teorico e colonie reali.
+ */
+const checkCensusDivergence = (W_t, A_t, colonies) => {
+    const dubiaModule = D();
+    let censusT = null;
+    if (dubiaModule) {
+        censusT = dubiaModule.census(W_t, A_t);
+    } else {
+        const W_adulti  = W_t * A_t;
+        const W_neanidi = W_t * (1 - A_t);
+        censusT = {
+            N_femmine: Math.round(W_adulti * 0.77 / 2.5),
+            N_maschi:  Math.round(W_adulti * 0.23 / 1.5),
+            N_medie:   Math.round(W_neanidi * 0.70 / 0.8),
+            N_baby:    Math.round(W_neanidi * 0.30 / 0.1)
+        };
+    }
+
+    let emp = {
+        males: 0, females: 0, subadults: 0, medium: 0, small: 0, baby: 0
+    };
+
+    if (Array.isArray(colonies)) {
+        colonies.forEach(c => {
+            emp.males += parseInt(c.males_count, 10) || 0;
+            emp.females += parseInt(c.females_count, 10) || 0;
+            emp.subadults += parseInt(c.subadults_count, 10) || 0;
+            emp.medium += parseInt(c.medium_count, 10) || 0;
+            emp.small += parseInt(c.small_count, 10) || 0;
+            emp.baby += parseInt(c.baby_count, 10) || 0;
+        });
+    }
+
+    const lockedWeight = 
+        (emp.males * MASS.MALE) +
+        (emp.females * MASS.FEMALE) +
+        (emp.subadults * MASS.SUBADULT) +
+        (emp.medium * MASS.MEDIUM) +
+        (emp.small * MASS.SMALL) +
+        (emp.baby * MASS.BABY);
+
+    const isOverweight = lockedWeight > W_t;
+
+    // A conflict is detected if there's more of ANY specific counted stage than theoretically available 
+    // OR if the total weight of the colonies exceeds the total scale weight
+    const hasConflict = 
+        (emp.females > censusT.N_femmine) || 
+        (emp.males > censusT.N_maschi) || 
+        (emp.medium > censusT.N_medie) || 
+        (emp.baby > censusT.N_baby) || 
+        isOverweight;
+
+    return {
+        theoric: censusT,
+        empirical: emp,
+        lockedWeight: lockedWeight,
+        isOverweight: isOverweight,
+        deltas: {
+            females: emp.females - censusT.N_femmine,
+            males: emp.males - censusT.N_maschi,
+            medium: emp.medium - censusT.N_medie,
+            baby: emp.baby - censusT.N_baby
+        },
+        hasConflict: hasConflict
+    };
+};
+
+/**
  * Aggiorna la Tabella di Censimento Demografico nell'UI.
  * Riceve metrics pre-calcolate da calculateColonyMetrics().
  */
@@ -1123,7 +1191,91 @@ const updateCensusTable = (W_t, A_t, metricsOverride) => {
     }).join('');
 };
 
+/**
+ * Aggiorna la UI della card "Allineamento Colonie" nella Dashboard
+ */
+const updateAlignmentStatus = () => {
+    const container = document.getElementById('alignmentStatusContainer');
+    const msg = document.getElementById('alignmentStatusMessage');
+    const details = document.getElementById('alignmentStatusDetails');
+    const btnSync = document.getElementById('btnSyncCensus');
 
+    if (!container || !msg || !details || !btnSync) return;
+
+    if (appState.measurements.length === 0) {
+        msg.innerText = "Nessuna pesata disponibile.";
+        details.innerHTML = "Inserisci una pesata globale per attivare il controllo.";
+        btnSync.style.display = 'none';
+        return;
+    }
+
+    const latest = appState.measurements[appState.measurements.length - 1];
+    const divergence = checkCensusDivergence(latest.total_weight, latest.adult_ratio || 0.35, appState.colonies);
+
+    if (divergence.isOverweight) {
+        container.style.backgroundColor = "rgba(255, 71, 87, 0.1)";
+        container.style.borderColor = "var(--alert-red)";
+        msg.innerText = "❌ Errore Critico: Sovrappeso Fisico";
+        msg.style.color = "var(--alert-red)";
+        details.innerHTML = `Le tue colonie pesano fisicamente <strong>${divergence.lockedWeight.toFixed(1)}g</strong>, che supera il peso totale sulla bilancia (${latest.total_weight.toFixed(1)}g). Impossibile calibrare. Controlla i tuoi conteggi.`;
+        btnSync.style.display = 'none';
+    } else if (divergence.hasConflict) {
+        container.style.backgroundColor = "rgba(242, 201, 76, 0.1)";
+        container.style.borderColor = "#F2C94C";
+        msg.innerText = "⚠️ Discrepanza Rilevata";
+        msg.style.color = "#F2C94C";
+        
+        let deltaHtml = "Hai più individui in colonia rispetto alla stima matematica per:<ul>";
+        if (divergence.deltas.females > 0) deltaHtml += `<li>Femmine: +${divergence.deltas.females} in eccesso</li>`;
+        if (divergence.deltas.males > 0) deltaHtml += `<li>Maschi: +${divergence.deltas.males} in eccesso</li>`;
+        if (divergence.deltas.medium > 0) deltaHtml += `<li>Neanidi Medie: +${divergence.deltas.medium} in eccesso</li>`;
+        if (divergence.deltas.baby > 0) deltaHtml += `<li>Baby: +${divergence.deltas.baby} in eccesso</li>`;
+        deltaHtml += "</ul>Il peso globale è corretto, ma le stime non tornano con i tuoi box fisici.";
+        
+        details.innerHTML = deltaHtml;
+        btnSync.style.display = 'block';
+
+        // Logica del pulsante Sync
+        btnSync.onclick = () => {
+            // Sincronizza: Calcola i pesi reali degli adulti
+            const W_adulti_reali = (divergence.empirical.females * MASS.FEMALE) + (divergence.empirical.males * MASS.MALE);
+            let new_At = W_adulti_reali / latest.total_weight;
+            new_At = Math.max(0.01, Math.min(0.99, new_At)); // Limiti sicuri
+
+            // Calcola biomassa bloccata e rimanente
+            const locked_W = divergence.lockedWeight;
+            const remaining_W = Math.max(0, latest.total_weight - locked_W);
+            
+            // Le neanidi assorbono il peso rimanente proporzionalmente 70/30
+            const extraMediumW = remaining_W * 0.70;
+            const extraBabyW = remaining_W * 0.30;
+            const extraMediumN = Math.round(extraMediumW / MASS.MEDIUM);
+            const extraBabyN = Math.round(extraBabyW / MASS.BABY);
+
+            appState.params.manualCalibrations = {
+                FEMALE: divergence.empirical.females,
+                MALE: divergence.empirical.males,
+                SUBADULT: divergence.empirical.subadults,
+                MEDIUM: divergence.empirical.medium + extraMediumN,
+                SMALL: divergence.empirical.small,
+                BABY: divergence.empirical.baby + extraBabyN
+            };
+            appState.params.theta1 = new_At; // Usa il nuovo A_t come theta1 base
+
+            saveParams(appState.params);
+            updateDashboard();
+            updateColoniesUI();
+            showNotification('Sincronizzazione Riuscita', 'Il censimento ora riflette la realtà empirica delle tue colonie mantenendo il peso invariato.', 'success');
+        };
+    } else {
+        container.style.backgroundColor = "rgba(39, 174, 96, 0.1)";
+        container.style.borderColor = "var(--accent-green)";
+        msg.innerText = "✅ Sistema Allineato";
+        msg.style.color = "var(--accent-green)";
+        details.innerHTML = "Il peso teorico e le colonie fisiche sono in perfetto equilibrio.";
+        btnSync.style.display = 'none';
+    }
+};
 
 const updateDoubleScenarioChart = (harvestAmount, simulatedFuture, days) => {
     if (!appState.charts.weight || !appState.measurements || appState.measurements.length === 0) return;
@@ -1593,7 +1745,7 @@ const updateUI = () => {
     // Aggiorna Diagnostica Differenziale
     updateDiagnosticsPanel();
 
-    // Aggiorna Tabella Censimento Demografico (Modulo 4)
+    // Aggiorna la Tabella di Censimento Demografico nell'UI.
     const latestForCensus = appState.measurements[appState.measurements.length - 1];
     if (latestForCensus) {
         // ── Tabella Censimento (usa metrics già calcolate — zero ricalcoli) ──────
@@ -1602,6 +1754,9 @@ const updateUI = () => {
         latestForCensus.adult_ratio || 0.35,
         metrics
     );
+    
+    // Aggiorna lo stato di allineamento
+    updateAlignmentStatus();
 
     }
 
@@ -3361,6 +3516,48 @@ document.addEventListener('DOMContentLoaded', () => {
                 liveWeightEl.style.display = 'block';
             } else {
                 liveWeightEl.style.display = 'none';
+            }
+        }
+
+        // Divergence Check Live
+        const warningEl = document.getElementById('colonyCountWarning');
+        if (warningEl && appState.measurements.length > 0) {
+            const latest = appState.measurements[appState.measurements.length - 1];
+            // Calcola censimento teorico globale
+            const metrics = calculateColonyMetrics(latest.total_weight, latest.adult_ratio, appState.params);
+            const censusT = metrics.census;
+
+            // Sottrai agli individui teorici tutti quelli GIA' assegnati ad ALTRE colonie
+            let availM = parseInt(metrics.mCount, 10) || 0;
+            let availF = parseInt(metrics.fCount, 10) || 0;
+            let availMed = parseInt(metrics.medCount, 10) || 0;
+            let availB = parseInt(metrics.bCount, 10) || 0;
+
+            const currentIdVal = document.getElementById('colonyId').value;
+            const skipIdString = currentIdVal ? String(currentIdVal).trim() : null;
+
+            appState.colonies.forEach(c => {
+                if (!c) return;
+                if (skipIdString !== null && String(c.id).trim() === skipIdString) return;
+
+                availM -= parseInt(c.males_count, 10) || 0;
+                availF -= parseInt(c.females_count, 10) || 0;
+                availMed -= parseInt(c.medium_count, 10) || 0;
+                availB -= parseInt(c.baby_count, 10) || 0;
+            });
+
+            // Mostra alert se il conteggio corrente supera i disponibili teorici
+            let warnings = [];
+            if (fCount > availF) warnings.push(`Femmine (${fCount} inserite, stima: ${Math.max(0, availF)})`);
+            if (mCount > availM) warnings.push(`Maschi (${mCount} inseriti, stima: ${Math.max(0, availM)})`);
+            if (medCount > availMed) warnings.push(`N. Medie (${medCount} inserite, stima: ${Math.max(0, availMed)})`);
+            if (bCount > availB) warnings.push(`Baby (${bCount} inseriti, stima: ${Math.max(0, availB)})`);
+
+            if (warnings.length > 0) {
+                warningEl.innerHTML = `⚠️ <strong>Attenzione:</strong> I numeri inseriti superano il censimento teorico per: <ul><li>${warnings.join('</li><li>')}</li></ul> Il salvataggio assorbirà biomassa da altre taglie.`;
+                warningEl.style.display = 'block';
+            } else {
+                warningEl.style.display = 'none';
             }
         }
     };
