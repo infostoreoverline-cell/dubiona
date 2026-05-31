@@ -3095,14 +3095,7 @@ const renderColonyPredictionChart = (colony, days) => {
                     },
                     plugins: {
                         legend: {
-                            position: 'bottom',
-                            labels: {
-                                color: 'white',
-                                font: { size: 11, family: 'Inter' },
-                                padding: 12,
-                                usePointStyle: true,
-                                pointStyleWidth: 10
-                            }
+                            display: false
                         },
                         tooltip: {
                             callbacks: {
@@ -3123,6 +3116,14 @@ const renderColonyPredictionChart = (colony, days) => {
             colonyPredDoughnutInstance.data.datasets[0].data = doughnutData;
             colonyPredDoughnutInstance.update();
         }
+
+        // Aggiorna la Smart Legend Grid (Contatori singoli)
+        document.getElementById('smartCountFemale').innerText = finalF;
+        document.getElementById('smartCountMale').innerText = finalM;
+        document.getElementById('smartCountSubAdult').innerText = finalSub;
+        document.getElementById('smartCountMedium').innerText = finalMed;
+        document.getElementById('smartCountSmall').innerText = finalSmall;
+        document.getElementById('smartCountBaby').innerText = finalBaby;
     }
     // ---------------------------------------
 
