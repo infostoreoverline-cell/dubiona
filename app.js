@@ -2893,7 +2893,8 @@ window.showColonyDetails = (id) => {
     const slider = document.getElementById('colonyPredictionSlider');
     const label = document.getElementById('colonyPredictionDaysLabel');
     if (slider && label) {
-        let currentDays = parseInt(slider.value) || 180;
+        slider.value = 0; // Inizia da oggi (0 gg)
+        let currentDays = 0;
         label.innerText = currentDays + ' gg';
         renderColonyPredictionChart(colony, currentDays);
         
@@ -3018,6 +3019,32 @@ const renderColonyPredictionChart = (colony, days) => {
         simM = Math.max(0, simM + (sub_to_a * 0.5) - m_deaths);
         simF = Math.max(0, simF + (sub_to_a * 0.5) - f_deaths);
     }
+
+    // --- Aggiornamento Piramide Dinamica ---
+    const finalM = Math.round(simM);
+    const finalF = Math.round(simF);
+    const finalSub = Math.round(simSub);
+    const finalMed = Math.round(simMed);
+    const finalSmall = Math.round(simSmall);
+    const finalBaby = Math.round(simBaby);
+    const totalPop = finalM + finalF + finalSub + finalMed + finalSmall + finalBaby || 1; // || 1 per evitare divisioni per 0
+
+    // Testi
+    document.getElementById('colonyPredCountFemale').innerText = finalF;
+    document.getElementById('colonyPredCountMale').innerText = finalM;
+    document.getElementById('colonyPredCountSubAdult').innerText = finalSub;
+    document.getElementById('colonyPredCountMedium').innerText = finalMed;
+    document.getElementById('colonyPredCountSmall').innerText = finalSmall;
+    document.getElementById('colonyPredCountBaby').innerText = finalBaby;
+
+    // Barre (max width circa 100%, con moltiplicatore visivo 3 come nella globale)
+    document.getElementById('colonyPredBarFemale').style.width = `${Math.min(100, (finalF/totalPop)*100 * 3)}%`;
+    document.getElementById('colonyPredBarMale').style.width = `${Math.min(100, (finalM/totalPop)*100 * 3)}%`;
+    document.getElementById('colonyPredBarSubAdult').style.width = `${Math.min(100, (finalSub/totalPop)*100 * 3)}%`;
+    document.getElementById('colonyPredBarMedium').style.width = `${Math.min(100, (finalMed/totalPop)*100 * 3)}%`;
+    document.getElementById('colonyPredBarSmall').style.width = `${Math.min(100, (finalSmall/totalPop)*100 * 3)}%`;
+    document.getElementById('colonyPredBarBaby').style.width = `${Math.min(100, (finalBaby/totalPop)*100 * 3)}%`;
+    // ---------------------------------------
 
     colonyPredictionChartInstance = new Chart(canvas, {
         type: 'line',

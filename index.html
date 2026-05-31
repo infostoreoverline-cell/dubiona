@@ -468,11 +468,57 @@
                     <h4 style="margin-bottom: 0.5rem; color: var(--accent-purple);">Previsione Demografica</h4>
                     <p class="subtitle-text" style="margin-bottom: 1rem; font-size: 0.8rem;">Trascina lo slider per vedere l'evoluzione prevista (Biomassa e Popolazione) di questa specifica colonia.</p>
                     <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
-                        <input type="range" id="colonyPredictionSlider" min="30" max="365" step="15" value="180" style="flex: 1;">
-                        <span id="colonyPredictionDaysLabel" style="min-width: 60px; text-align: right; font-weight: bold; color: var(--accent-green);">180 gg</span>
+                        <input type="range" id="colonyPredictionSlider" min="0" max="365" step="15" value="0" style="flex: 1;">
+                        <span id="colonyPredictionDaysLabel" style="min-width: 60px; text-align: right; font-weight: bold; color: var(--accent-green);">0 gg</span>
                     </div>
-                    <div style="position: relative; width: 100%; height: 250px;">
+                    <div style="position: relative; width: 100%; height: 250px; margin-bottom: 1rem;">
                         <canvas id="colonyPredictionChart"></canvas>
+                    </div>
+
+                    <!-- Piramide Dinamica Singola Colonia -->
+                    <div class="pyramid-container" style="margin-top: 0.5rem;">
+                        <div class="pyramid-level adult-female">
+                            <div class="level-info">
+                                <span class="level-name">Femmine Adulte (2.5g)</span>
+                                <span class="level-count" id="colonyPredCountFemale">--</span>
+                            </div>
+                            <div class="progress-bar"><div class="fill" id="colonyPredBarFemale" style="width: 0%"></div></div>
+                        </div>
+                        <div class="pyramid-level adult-male">
+                            <div class="level-info">
+                                <span class="level-name">Maschi Adulti (1.5g)</span>
+                                <span class="level-count" id="colonyPredCountMale">--</span>
+                            </div>
+                            <div class="progress-bar"><div class="fill" id="colonyPredBarMale" style="width: 0%"></div></div>
+                        </div>
+                        <div class="pyramid-level sub-adult">
+                            <div class="level-info">
+                                <span class="level-name">Sub-Adulte (1.6g)</span>
+                                <span class="level-count" id="colonyPredCountSubAdult">--</span>
+                            </div>
+                            <div class="progress-bar"><div class="fill" id="colonyPredBarSubAdult" style="width: 0%"></div></div>
+                        </div>
+                        <div class="pyramid-level nymph-medium">
+                            <div class="level-info">
+                                <span class="level-name">Neanidi Medie (0.8g)</span>
+                                <span class="level-count" id="colonyPredCountMedium">--</span>
+                            </div>
+                            <div class="progress-bar"><div class="fill" id="colonyPredBarMedium" style="width: 0%"></div></div>
+                        </div>
+                        <div class="pyramid-level nymph-small">
+                            <div class="level-info">
+                                <span class="level-name">Neanidi Piccole (0.3g)</span>
+                                <span class="level-count" id="colonyPredCountSmall">--</span>
+                            </div>
+                            <div class="progress-bar"><div class="fill" id="colonyPredBarSmall" style="width: 0%"></div></div>
+                        </div>
+                        <div class="pyramid-level baby">
+                            <div class="level-info">
+                                <span class="level-name">Micro-Neanidi (0.1g)</span>
+                                <span class="level-count" id="colonyPredCountBaby">--</span>
+                            </div>
+                            <div class="progress-bar"><div class="fill" id="colonyPredBarBaby" style="width: 0%"></div></div>
+                        </div>
                     </div>
                 </div>
 
