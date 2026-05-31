@@ -231,6 +231,15 @@ function doPost(e) {
       targetSheetName = SHEET_NAMES.PESATE;
     } else if (eventType === 'colonia' || eventType === 'colonia_sync') {
       targetSheetName = SHEET_NAMES.COLONIE;
+    } else if (eventType === 'colonia_delete') {
+      // Gestione eliminazione: rimuovi tutte le righe con questo id dal foglio Colonie
+      var deleteId = datiRicevuti['id'];
+      if (deleteId) {
+        deleteRowsById(ss, SHEET_NAMES.COLONIE, deleteId);
+      }
+      risposta = { status: 'success', message: 'Colonia ' + deleteId + ' eliminata dal foglio Colonie.' };
+      debugLog('doPost - risposta', risposta);
+      return buildJsonResponse(risposta);
     }
 
     // ── Salva su Timeline (per tutti tranne colonia/colonia_sync) ─────────
@@ -299,6 +308,44 @@ function appendRowToSheet(ss, sheetName, data) {
 
   debugLog('appendRowToSheet - riga aggiunta su ' + sheetName, newRow);
   sheet.appendRow(newRow);
+}
+// ──────────────────────────────────────────────────────────────
+// Helper: elimina tutte le righe con un determinato id da un foglio
+// Scorre dal basso verso l'alto per non spostare gli indici
+// ──────────────────────────────────────────────────────────────
+function deleteRowsById(ss, sheetName, targetId) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return;
+
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return; // Solo header o vuoto
+
+  var headers = data[0];
+  var idColIndex = -1;
+  for (var h = 0; h < headers.length; h++) {
+    if (String(headers[h]).trim().toLowerCase() === 'id') {
+      idColIndex = h;
+      break;
+    }
+  }
+
+  if (idColIndex < 0) {
+    debugLog('deleteRowsById - colonna "id" non trovata in', sheetName);
+    return;
+  }
+
+  var deletedCount = 0;
+  // Scorre dal basso verso l'alto per evitare di spostare gli indici delle righe
+  for (var i = data.length - 1; i >= 1; i--) {
+    var rowId = data[i][idColIndex];
+    // Confronto flessibile: il foglio potrebbe avere l'id come numero o stringa
+    if (String(rowId) === String(targetId)) {
+      sheet.deleteRow(i + 1); // deleteRow è 1-indexed
+      deletedCount++;
+    }
+  }
+
+  debugLog('deleteRowsById - righe eliminate da ' + sheetName + ' per id=' + targetId, deletedCount);
 }
 
 // ──────────────────────────────────────────────────────────────

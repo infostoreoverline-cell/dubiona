@@ -2752,7 +2752,7 @@ const syncColoniesFromCloud = async () => {
 };
 
 /**
- * Elimina una colonia
+ * Elimina una colonia (locale + cloud)
  */
 const deleteColony = (id) => {
     return new Promise((resolve) => {
@@ -2760,8 +2760,32 @@ const deleteColony = (id) => {
         const store = tx.objectStore("colonies");
         store.delete(Number(id));
         appState.colonies = appState.colonies.filter(c => c.id !== Number(id));
+        
+        // Elimina anche dal cloud
+        deleteColonyFromCloud(id);
+        
         resolve();
     });
+};
+
+/**
+ * Invia evento di eliminazione colonia a Google Sheets
+ */
+const deleteColonyFromCloud = async (id) => {
+    try {
+        const payload = {
+            event_type: 'colonia_delete',
+            id: Number(id)
+        };
+        fetch(GAS_URL, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify(payload)
+        });
+    } catch (e) {
+        console.warn("Colony cloud delete failed.", e);
+    }
 };
 
 /**
