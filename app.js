@@ -1038,6 +1038,12 @@ const calculateColonyMetrics = (W_t, A_t, params) => {
         N_maschi: mCount,
         N_medie: medCount,
         N_baby: bCount,
+        W_femmine: fCount * MASS.FEMALE,
+        W_maschi: mCount * MASS.MALE,
+        W_neanidi_medie: medCount * MASS.MEDIUM,
+        W_neanidi_baby: bCount * MASS.BABY,
+        W_adulti: (fCount * MASS.FEMALE) + (mCount * MASS.MALE),
+        W_neanidi: (medCount * MASS.MEDIUM) + (bCount * MASS.BABY),
         N_totale_adulti: fCount + mCount,
         N_totale_neanidi: medCount + bCount,
         N_totale: fCount + mCount + medCount + bCount,
@@ -1274,12 +1280,17 @@ const updateAlignmentStatus = () => {
                 SMALL: divergence.empirical.small,
                 BABY: divergence.empirical.baby + extraBabyN
             };
-            appState.params.theta1 = new_At; // Usa il nuovo A_t come theta1 base
 
+            // FIX CRITICO: Il rapporto adulti è A_t (in latest.adult_ratio), NON theta1 (resa alimentare)!
+            latest.adult_ratio = new_At;
+            
             saveParams(appState.params);
-            updateDashboard();
-            updateColoniesUI();
-            showNotification('Sincronizzazione Riuscita', 'Il censimento ora riflette la realtà empirica delle tue colonie mantenendo il peso invariato.', 'success');
+            
+            saveMeasurement(latest).then(() => {
+                updateDashboard();
+                updateColoniesUI();
+                showNotification('Sincronizzazione Riuscita', 'Il censimento ora riflette la realtà empirica delle tue colonie mantenendo il peso invariato.', 'success');
+            });
         };
     } else {
         container.style.backgroundColor = "rgba(39, 174, 96, 0.1)";
