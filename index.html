@@ -904,35 +904,42 @@
                         <option value="Altro">Altro</option>
                     </select>
                 </div>
+                <div class="form-group" style="margin-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center;">
+                    <label style="margin-bottom: 0;">Composizione Popolazione</label>
+                    <button type="button" id="btnFillRemainingColony" class="btn-standard" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; background: rgba(142, 68, 173, 0.2); color: var(--accent-purple); border: 1px solid rgba(142, 68, 173, 0.4); border-radius: 4px;">✨ Riempi con Rimanenti</button>
+                </div>
                 <div class="form-group" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom: 0.5rem;">
                     <div style="flex:1; min-width:80px;">
                         <label for="colonyMales" style="font-size:0.8rem;">Maschi</label>
-                        <input type="number" id="colonyMales" class="input-standard" min="0" placeholder="N°">
+                        <input type="number" id="colonyMales" class="input-standard colony-count-input" min="0" placeholder="N°">
                     </div>
                     <div style="flex:1; min-width:80px;">
                         <label for="colonyFemales" style="font-size:0.8rem;">Femmine</label>
-                        <input type="number" id="colonyFemales" class="input-standard" min="0" placeholder="N°">
+                        <input type="number" id="colonyFemales" class="input-standard colony-count-input" min="0" placeholder="N°">
                     </div>
                     <div style="flex:1; min-width:80px;">
                         <label for="colonySubadults" style="font-size:0.8rem;">Sub-Adulte</label>
-                        <input type="number" id="colonySubadults" class="input-standard" min="0" placeholder="N°">
+                        <input type="number" id="colonySubadults" class="input-standard colony-count-input" min="0" placeholder="N°">
                     </div>
                 </div>
                 <div class="form-group" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-bottom: 0.5rem;">
                     <div style="flex:1; min-width:80px;">
                         <label for="colonyMedium" style="font-size:0.8rem;">N. Medie</label>
-                        <input type="number" id="colonyMedium" class="input-standard" min="0" placeholder="N°">
+                        <input type="number" id="colonyMedium" class="input-standard colony-count-input" min="0" placeholder="N°">
                     </div>
                     <div style="flex:1; min-width:80px;">
                         <label for="colonySmall" style="font-size:0.8rem;">N. Piccole</label>
-                        <input type="number" id="colonySmall" class="input-standard" min="0" placeholder="N°">
+                        <input type="number" id="colonySmall" class="input-standard colony-count-input" min="0" placeholder="N°">
                     </div>
                     <div style="flex:1; min-width:80px;">
                         <label for="colonyBaby" style="font-size:0.8rem;">Baby</label>
-                        <input type="number" id="colonyBaby" class="input-standard" min="0" placeholder="N°">
+                        <input type="number" id="colonyBaby" class="input-standard colony-count-input" min="0" placeholder="N°">
                     </div>
                 </div>
-                <p class="subtitle-text" style="font-size: 0.8rem; margin-top:-0.2rem; margin-bottom: 1rem;">Inserendo il numero di individui, il grafico previsionale userà ESATTAMENTE i dati di questa colonia e calcolerà in automatico il peso.</p>
+                <p class="subtitle-text" style="font-size: 0.8rem; margin-top:-0.2rem; margin-bottom: 0.5rem;">Inserendo il numero di individui, il grafico previsionale userà ESATTAMENTE i dati di questa colonia e calcolerà in automatico il peso.</p>
+                <div id="colonyEstimatedWeightLive" style="color: var(--accent-green); font-weight: bold; font-size: 0.9rem; margin-bottom: 1rem; padding: 0.5rem; background: rgba(46, 204, 113, 0.1); border-radius: 4px; display: none;">
+                    Stima Peso: 0.0 g
+                </div>
 
                 <div class="form-group">
                     <label for="colonyNotes">Note Generali</label>

@@ -3331,6 +3331,8 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('colonySmall').value = '';
             document.getElementById('colonyBaby').value = '';
             document.getElementById('colonyModalTitle').innerText = 'Nuova Colonia';
+            const liveWeightEl = document.getElementById('colonyEstimatedWeightLive');
+            if (liveWeightEl) liveWeightEl.style.display = 'none';
             document.getElementById('colonyModal').classList.add('active');
         });
     }
@@ -3338,6 +3340,77 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnCancelColony = document.getElementById('btnCancelColony');
     if (btnCancelColony) {
         btnCancelColony.addEventListener('click', () => document.getElementById('colonyModal').classList.remove('active'));
+    }
+
+    // -- Logica per stima peso live nel modulo colonia --
+    const updateColonyEstimatedWeight = () => {
+        const mCount = parseInt(document.getElementById('colonyMales')?.value) || 0;
+        const fCount = parseInt(document.getElementById('colonyFemales')?.value) || 0;
+        const subCount = parseInt(document.getElementById('colonySubadults')?.value) || 0;
+        const medCount = parseInt(document.getElementById('colonyMedium')?.value) || 0;
+        const smCount = parseInt(document.getElementById('colonySmall')?.value) || 0;
+        const bCount = parseInt(document.getElementById('colonyBaby')?.value) || 0;
+
+        const totalWeight = (mCount * MASS.MALE) + (fCount * MASS.FEMALE) + (subCount * MASS.SUBADULT) + 
+                            (medCount * MASS.MEDIUM) + (smCount * MASS.SMALL) + (bCount * MASS.BABY);
+
+        const liveWeightEl = document.getElementById('colonyEstimatedWeightLive');
+        if (liveWeightEl) {
+            if (mCount + fCount + subCount + medCount + smCount + bCount > 0) {
+                liveWeightEl.innerText = `Stima Peso: ${totalWeight.toFixed(1)} g`;
+                liveWeightEl.style.display = 'block';
+            } else {
+                liveWeightEl.style.display = 'none';
+            }
+        }
+    };
+
+    const countInputs = document.querySelectorAll('.colony-count-input');
+    countInputs.forEach(input => input.addEventListener('input', updateColonyEstimatedWeight));
+
+    // -- Logica Riempi con Rimanenti --
+    const btnFillRemainingColony = document.getElementById('btnFillRemainingColony');
+    if (btnFillRemainingColony) {
+        btnFillRemainingColony.addEventListener('click', () => {
+            if (!appState.measurements || appState.measurements.length === 0) {
+                showNotification('Attenzione', 'Nessuna pesata globale trovata. Inserisci prima una pesata globale.', 'alert');
+                return;
+            }
+            const latest = appState.measurements[appState.measurements.length - 1];
+            // Ottieni metriche globali
+            const metrics = calculateColonyMetrics(latest.total_weight, latest.adult_ratio, appState.params);
+            
+            let globM = metrics.mCount;
+            let globF = metrics.fCount;
+            let globSub = metrics.saCount;
+            let globMed = metrics.medCount;
+            let globSm = metrics.smCount;
+            let globB = metrics.bCount;
+
+            const currentIdVal = document.getElementById('colonyId').value;
+
+            // Sottrai tutti gli assegnati
+            appState.colonies.forEach(c => {
+                if (currentIdVal && Number(currentIdVal) === c.id) return; // Escludi la colonia corrente se in modifica
+                globM -= (c.males_count || 0);
+                globF -= (c.females_count || 0);
+                globSub -= (c.subadults_count || 0);
+                globMed -= (c.medium_count || 0);
+                globSm -= (c.small_count || 0);
+                globB -= (c.baby_count || 0);
+            });
+
+            document.getElementById('colonyMales').value = Math.max(0, globM);
+            document.getElementById('colonyFemales').value = Math.max(0, globF);
+            document.getElementById('colonySubadults').value = Math.max(0, globSub);
+            document.getElementById('colonyMedium').value = Math.max(0, globMed);
+            document.getElementById('colonySmall').value = Math.max(0, globSm);
+            document.getElementById('colonyBaby').value = Math.max(0, globB);
+
+            // Aggiorna il peso
+            updateColonyEstimatedWeight();
+            showNotification('Completato', 'Quantità compilate con gli individui rimanenti dal censimento.', 'success');
+        });
     }
 
     const colonyForm = document.getElementById('colonyForm');
