@@ -2910,6 +2910,7 @@ window.showColonyDetails = (id) => {
 };
 
 let colonyPredictionChartInstance = null;
+let colonyPredDoughnutInstance = null;
 
 const renderColonyPredictionChart = (colony, days) => {
     const canvas = document.getElementById('colonyPredictionChart');
@@ -3020,30 +3021,109 @@ const renderColonyPredictionChart = (colony, days) => {
         simF = Math.max(0, simF + (sub_to_a * 0.5) - f_deaths);
     }
 
-    // --- Aggiornamento Piramide Dinamica ---
+    // --- Aggiornamento Doughnut Chart Dinamico ---
     const finalM = Math.round(simM);
     const finalF = Math.round(simF);
     const finalSub = Math.round(simSub);
     const finalMed = Math.round(simMed);
     const finalSmall = Math.round(simSmall);
     const finalBaby = Math.round(simBaby);
-    const totalPop = finalM + finalF + finalSub + finalMed + finalSmall + finalBaby || 1; // || 1 per evitare divisioni per 0
+    const totalPop = finalM + finalF + finalSub + finalMed + finalSmall + finalBaby;
 
-    // Testi
-    document.getElementById('colonyPredCountFemale').innerText = finalF;
-    document.getElementById('colonyPredCountMale').innerText = finalM;
-    document.getElementById('colonyPredCountSubAdult').innerText = finalSub;
-    document.getElementById('colonyPredCountMedium').innerText = finalMed;
-    document.getElementById('colonyPredCountSmall').innerText = finalSmall;
-    document.getElementById('colonyPredCountBaby').innerText = finalBaby;
+    const doughnutData = [finalF, finalM, finalSub, finalMed, finalSmall, finalBaby];
+    const doughnutCanvas = document.getElementById('colonyPredDoughnutChart');
+    
+    if (doughnutCanvas) {
+        if (!colonyPredDoughnutInstance) {
+            // Plugin custom per il testo al centro
+            const centerTextPlugin = {
+                id: 'centerTextPlugin',
+                beforeDraw: function(chart) {
+                    if (chart.config.type !== 'doughnut') return;
+                    const ctx = chart.ctx;
+                    const width = chart.width;
+                    const height = chart.height;
+                    ctx.restore();
+                    
+                    const centerX = width / 2;
+                    const centerY = height / 2;
+                    
+                    // Disegna il totale
+                    ctx.font = 'bold 32px Inter, sans-serif';
+                    ctx.fillStyle = '#2ecc71';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    const total = chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                    ctx.fillText(total, centerX, centerY - 10);
+                    
+                    // Disegna la label
+                    ctx.font = '12px Inter, sans-serif';
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+                    ctx.fillText("Insetti Previsti", centerX, centerY + 18);
+                    
+                    ctx.save();
+                }
+            };
 
-    // Barre (max width circa 100%, con moltiplicatore visivo 3 come nella globale)
-    document.getElementById('colonyPredBarFemale').style.width = `${Math.min(100, (finalF/totalPop)*100 * 3)}%`;
-    document.getElementById('colonyPredBarMale').style.width = `${Math.min(100, (finalM/totalPop)*100 * 3)}%`;
-    document.getElementById('colonyPredBarSubAdult').style.width = `${Math.min(100, (finalSub/totalPop)*100 * 3)}%`;
-    document.getElementById('colonyPredBarMedium').style.width = `${Math.min(100, (finalMed/totalPop)*100 * 3)}%`;
-    document.getElementById('colonyPredBarSmall').style.width = `${Math.min(100, (finalSmall/totalPop)*100 * 3)}%`;
-    document.getElementById('colonyPredBarBaby').style.width = `${Math.min(100, (finalBaby/totalPop)*100 * 3)}%`;
+            colonyPredDoughnutInstance = new Chart(doughnutCanvas, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Femmine', 'Maschi', 'Sub-Adulte', 'Medie', 'Piccole', 'Baby'],
+                    datasets: [{
+                        data: doughnutData,
+                        backgroundColor: [
+                            '#9b59b6', // Femmine (Viola)
+                            '#3498db', // Maschi (Blu)
+                            '#e67e22', // Sub-Adulte (Arancio)
+                            '#2ecc71', // Medie (Verde)
+                            '#1abc9c', // Piccole (Ottanio)
+                            '#f1c40f'  // Baby (Giallo)
+                        ],
+                        borderWidth: 3,
+                        borderColor: '#111928', // Stesso colore del background della card
+                        hoverOffset: 6,
+                        borderRadius: 6 // Angoli arrotondati premium
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '75%', // Molto sottile per un look premium
+                    animation: {
+                        duration: 400,
+                        easing: 'easeOutQuart'
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                color: 'white',
+                                font: { size: 11, family: 'Inter' },
+                                padding: 12,
+                                usePointStyle: true,
+                                pointStyleWidth: 10
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const val = context.raw;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = total > 0 ? Math.round((val / total) * 100) : 0;
+                                    return ` ${context.label}: ${val} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                },
+                plugins: [centerTextPlugin]
+            });
+        } else {
+            // Aggiorna solo i dati per un'animazione fluida (Time-lapse)
+            colonyPredDoughnutInstance.data.datasets[0].data = doughnutData;
+            colonyPredDoughnutInstance.update();
+        }
+    }
     // ---------------------------------------
 
     colonyPredictionChartInstance = new Chart(canvas, {
