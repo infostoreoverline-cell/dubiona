@@ -234,8 +234,9 @@ const loadInitialData = async () => {
     // ── Carica Clienti e Cessioni da IndexedDB ────────────────────────────
     await loadClientsAndCessioni();
 
-    // ── Carica Colonie da IndexedDB ───────────────────────────────────────
+    // ── Carica Colonie da IndexedDB e sincronizza dal Cloud ───────────────
     await loadColonies();
+    await syncColoniesFromCloud();
 
     // ── STEP 2: Prova a caricare le misure dal Cloud ─────────────────────────
     try {
@@ -2669,7 +2670,14 @@ const saveColonyToCloud = async (colony) => {
             id: colony.id,
             name: colony.name,
             type: colony.type,
-            notes: colony.notes
+            notes: colony.notes,
+            current_weight: colony.current_weight || 0,
+            males_count: colony.males_count || 0,
+            females_count: colony.females_count || 0,
+            subadults_count: colony.subadults_count || 0,
+            medium_count: colony.medium_count || 0,
+            small_count: colony.small_count || 0,
+            baby_count: colony.baby_count || 0
         };
         fetch(GAS_URL, {
             method: 'POST',
@@ -2679,6 +2687,67 @@ const saveColonyToCloud = async (colony) => {
         });
     } catch (e) {
         console.warn("Colony backup to cloud failed.", e);
+    }
+};
+
+/**
+ * Sync colonie dal Cloud (Scarica il foglio Colonie e unisce i dati in IndexedDB)
+ */
+const syncColoniesFromCloud = async () => {
+    try {
+        if (!navigator.onLine) return;
+        
+        console.info("[D.U.B.I.A.] Sincronizzazione Colonie dal cloud...");
+        const response = await fetch(GAS_URL + "?sheet=Colonie", { redirect: "follow" });
+        if (!response.ok) return;
+        
+        const jsonResponse = await response.json();
+        const data = jsonResponse.data || jsonResponse;
+        
+        if (Array.isArray(data) && data.length > 0) {
+            // Poiché GAS fa solo appendRow, deduplichiamo per ID prendendo l'ultimo inserito
+            const coloniesMap = new Map();
+            data.forEach(c => {
+                if (c.id) coloniesMap.set(Number(c.id), c);
+            });
+            
+            const tx = db.transaction("colonies", "readwrite");
+            const store = tx.objectStore("colonies");
+            
+            coloniesMap.forEach((cloudColony, id) => {
+                // Costruisci oggetto colonia normalizzato
+                const mappedColony = {
+                    id: id,
+                    creation_date: cloudColony.date || cloudColony.creation_date || new Date().toISOString().split('T')[0],
+                    name: cloudColony.name || `Colonia ${id}`,
+                    type: cloudColony.type || 'Pasto',
+                    notes: cloudColony.notes || '',
+                    current_weight: parseFloat(cloudColony.current_weight) || parseFloat(cloudColony.total_weight) || 0,
+                    males_count: parseInt(cloudColony.males_count) || 0,
+                    females_count: parseInt(cloudColony.females_count) || 0,
+                    subadults_count: parseInt(cloudColony.subadults_count) || 0,
+                    medium_count: parseInt(cloudColony.medium_count) || 0,
+                    small_count: parseInt(cloudColony.small_count) || 0,
+                    baby_count: parseInt(cloudColony.baby_count) || 0
+                };
+                
+                // Salva o aggiorna in IndexedDB silenziosamente
+                store.put(mappedColony);
+                
+                // Aggiorna array in memoria (appState)
+                const idx = appState.colonies.findIndex(c => c.id === id);
+                if (idx >= 0) {
+                    appState.colonies[idx] = mappedColony;
+                } else {
+                    appState.colonies.push(mappedColony);
+                }
+            });
+            
+            console.info(`[D.U.B.I.A.] Sincronizzate ${coloniesMap.size} colonie dal cloud.`);
+            updateColoniesUI();
+        }
+    } catch (e) {
+        console.warn("Errore durante il download delle colonie dal cloud:", e);
     }
 };
 
