@@ -2854,6 +2854,19 @@ window.showColonyDetails = (id) => {
     document.getElementById('detailColonyWeight').innerText = colony.current_weight ? `${colony.current_weight.toFixed(1)} g` : '-- g';
     document.getElementById('detailColonyMales').innerText = colony.males_count || '--';
     document.getElementById('detailColonyFemales').innerText = colony.females_count || '--';
+
+    // Calcolo Sex Ratio
+    let ratioText = "";
+    if (colony.males_count > 0 && colony.females_count > 0) {
+        const r = (colony.females_count / colony.males_count).toFixed(1);
+        // Formatta come (1:2.5) e gestisci il .0 se intero
+        ratioText = `(1:${r.replace('.0', '')})`;
+    } else if (colony.males_count === 0 && colony.females_count > 0) {
+        ratioText = `(Solo ♀)`;
+    } else if (colony.males_count > 0 && colony.females_count === 0) {
+        ratioText = `(Solo ♂)`;
+    }
+    document.getElementById('detailColonySexRatio').innerText = ratioText;
     document.getElementById('detailColonySubadults').innerText = colony.subadults_count || '--';
     document.getElementById('detailColonyMedium').innerText = colony.medium_count || '--';
     document.getElementById('detailColonySmall').innerText = colony.small_count || '--';
