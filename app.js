@@ -9,7 +9,7 @@
  */
 
 // Constants & Configurations
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzdNCct1bZF4uUJgbt2vkTF5RWr_IxtYuArDyea3yeCTT2Fjw92g8GuIzY72egOscKm4g/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbw_DEyOdnAuezhtE7L1sjrKBBsGBxx84Zd60vQYcUtt1iW-7m5uL3baTi5LoDPgPSDUoA/exec";
 
 // Tasso di apprendimento α per la discesa del gradiente
 const ALPHA = 1e-6;
