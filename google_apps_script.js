@@ -1,129 +1,318 @@
-var MASTER_SHEET = 'Timeline';
+// ═══════════════════════════════════════════════════════════════
+// D.U.B.I.A. — Google Apps Script Backend
+// ═══════════════════════════════════════════════════════════════
+// DEBUG: imposta su true per abilitare i log di Console (Stackdriver)
+var DEBUG = true;
 
-function doGet(e) {
-  try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(MASTER_SHEET);
-    if (!sheet) {
-        throw new Error("Foglio 'Timeline' non trovato");
-    }
-    var data = sheet.getDataRange().getValues();
+var SHEET_NAMES = {
+  TIMELINE:    'Timeline',
+  CENSIMENTO:  'Censimento',
+  PESATE:      'Pesate',
+  PRELIEVI:    'Prelievi',
+  CIBO:        'Cibo',
+  CLIENTI:     'Clienti',
+  COLONIE:     'Colonie'
+};
 
-    if (data.length <= 1) {
-      return ContentService.createTextOutput(JSON.stringify({ status: "success", data: [] }))
-        .setMimeType(ContentService.MimeType.JSON);
-    }
-
-    var headers = data[0];
-    var result = [];
-
-    for (var i = 1; i < data.length; i++) {
-      var row = data[i];
-      var rowData = {};
-      for (var j = 0; j < headers.length; j++) {
-        rowData[headers[j]] = row[j];
-      }
-      result.push(rowData);
-    }
-
-    var risposta = { status: "success", message: "Dati recuperati con successo", data: result };
-
-    return ContentService.createTextOutput(JSON.stringify(risposta))
-      .setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    var errore = { status: "error", message: err.toString() };
-    return ContentService.createTextOutput(JSON.stringify(errore))
-      .setMimeType(ContentService.MimeType.JSON);
+// ──────────────────────────────────────────────────────────────
+// Helper: log condizionale
+// ──────────────────────────────────────────────────────────────
+function debugLog(label, value) {
+  if (DEBUG) {
+    Logger.log('[D.U.B.I.A. DEBUG] ' + label + ': ' + JSON.stringify(value));
   }
 }
 
-function doPost(e) {
-  var risposta = { status: "error", message: "Richiesta non valida" };
-
-  try {
-    if (e.postData && e.postData.contents) {
-      var datiRicevuti = JSON.parse(e.postData.contents);
-      var ss = SpreadsheetApp.getActiveSpreadsheet();
-      var masterSheet = ss.getSheetByName(MASTER_SHEET);
-
-      if (!masterSheet) {
-          throw new Error("Foglio 'Timeline' non trovato");
-      }
-
-      var lastColumn = masterSheet.getLastColumn();
-      var headers = [];
-
-      // Se il foglio è completamente vuoto, genera le intestazioni standard
-      if (lastColumn === 0) {
-        headers = [
-          "date", "total_weight", "event_type", "food_amount", "harvest_amount",
-          "adults", "nymphs", "males", "females", "medium_nymphs", "baby_nymphs"
-        ];
-        masterSheet.appendRow(headers);
-      } else {
-        headers = masterSheet.getRange(1, 1, 1, lastColumn).getValues()[0];
-      }
-
-      var newRow = [];
-
-      for (var i = 0; i < headers.length; i++) {
-        var header = headers[i];
-        newRow.push(datiRicevuti[header] !== undefined ? datiRicevuti[header] : "");
-      }
-
-      var eventType = datiRicevuti['event_type'] || 'pesata'; // Default to pesata for retrocompatibility
-
-      // Save to Timeline (MASTER_SHEET), except for 'calibrazione', 'colonia', 'colonia_sync'
-      if (eventType !== 'calibrazione' && eventType !== 'colonia' && eventType !== 'colonia_sync') {
-        masterSheet.appendRow(newRow);
-      }
-
-      // Secondary Sheets Routing
-      var targetSheetName = null;
-
-      if (eventType === 'cibo') {
-          targetSheetName = 'Cibo';
-      } else if (eventType === 'prelievo') {
-          targetSheetName = 'Prelievi';
-      } else if (eventType === 'calibrazione') {
-          targetSheetName = 'Censimento';
-      } else if (eventType === 'pesata' || eventType === 'nuovo_sangue') {
-          targetSheetName = 'Pesate';
-      } else if (eventType === 'colonia' || eventType === 'colonia_sync') {
-          targetSheetName = 'Colonie';
-      }
-
-      if (targetSheetName) {
-          var targetSheet = ss.getSheetByName(targetSheetName);
-          if (targetSheet) {
-              // Get headers for the target sheet
-              var targetHeaders = targetSheet.getRange(1, 1, 1, Math.max(1, targetSheet.getLastColumn())).getValues()[0];
-
-              // If target sheet is completely empty, initialize it with master headers
-              if (targetHeaders.length === 0 || (targetHeaders.length === 1 && targetHeaders[0] === "")) {
-                  targetSheet.appendRow(headers);
-                  targetHeaders = headers;
-              }
-
-              var targetNewRow = [];
-              for (var k = 0; k < targetHeaders.length; k++) {
-                  var th = targetHeaders[k];
-                  targetNewRow.push(datiRicevuti[th] !== undefined ? datiRicevuti[th] : "");
-              }
-              targetSheet.appendRow(targetNewRow);
-          }
-      }
-
-      risposta = { status: "success", message: "Dati salvati con successo" };
-    }
-  } catch (err) {
-    risposta = { status: "error", message: err.toString() };
+// ──────────────────────────────────────────────────────────────
+// Helper: converte un valore di cella in un tipo JS corretto
+//   - Date object  → stringa ISO  "YYYY-MM-DD"
+//   - Number       → Number
+//   - Boolean      → Boolean
+//   - Stringa      → String (con trim)
+//   - vuoto/null   → null
+// ──────────────────────────────────────────────────────────────
+function convertCell(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
   }
 
-  return ContentService.createTextOutput(JSON.stringify(risposta))
+  // Google Sheets restituisce oggetti Date per le celle formattate come data
+  if (value instanceof Date) {
+    // Controlla che la data sia valida (non epoch 0)
+    if (isNaN(value.getTime())) return null;
+    // Formatta come YYYY-MM-DD (locale del foglio, ma usiamo UTC per sicurezza)
+    var y = value.getFullYear();
+    var m = String(value.getMonth() + 1).padStart(2, '0');
+    var d = String(value.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+
+  // Numero (intero o float)
+  if (typeof value === 'number') {
+    return value; // Mantieni come Number, non convertire in stringa
+  }
+
+  // Booleano
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  // Stringa: ritorna il valore trimmed, o null se vuota
+  if (typeof value === 'string') {
+    var trimmed = value.trim();
+    return trimmed === '' ? null : trimmed;
+  }
+
+  return value;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Helper: controlla se una riga è completamente vuota
+// ──────────────────────────────────────────────────────────────
+function isRowEmpty(row) {
+  for (var i = 0; i < row.length; i++) {
+    if (row[i] !== null && row[i] !== undefined && row[i] !== '') {
+      return false;
+    }
+  }
+  return true;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Helper: legge un foglio e restituisce array di oggetti {chiave:valore}
+// Gestisce robustamente righe parzialmente vuote e conversioni di tipo.
+// ──────────────────────────────────────────────────────────────
+function readSheet(sheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    debugLog('readSheet - foglio non trovato', sheetName);
+    throw new Error("Foglio '" + sheetName + "' non trovato nel documento.");
+  }
+
+  // Usa getDataRange() che copre automaticamente tutte le celle con contenuto
+  var dataRange = sheet.getDataRange();
+  var data = dataRange.getValues();
+
+  debugLog('readSheet - nome foglio', sheetName);
+  debugLog('readSheet - righe totali (con header)', data.length);
+  debugLog('readSheet - colonne totali', data.length > 0 ? data[0].length : 0);
+
+  if (data.length <= 1) {
+    debugLog('readSheet - foglio vuoto o solo header', sheetName);
+    return [];
+  }
+
+  var headers = data[0];
+  debugLog('readSheet - headers', headers);
+
+  // Trova l'indice dell'ultima colonna header non vuota
+  var lastValidHeaderIdx = -1;
+  for (var h = 0; h < headers.length; h++) {
+    if (headers[h] !== null && headers[h] !== undefined && String(headers[h]).trim() !== '') {
+      lastValidHeaderIdx = h;
+    }
+  }
+
+  if (lastValidHeaderIdx < 0) {
+    debugLog('readSheet - nessun header valido trovato', sheetName);
+    return [];
+  }
+
+  var result = [];
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+
+    // Salta righe completamente vuote
+    if (isRowEmpty(row)) {
+      debugLog('readSheet - riga vuota saltata', i + 1);
+      continue;
+    }
+
+    var rowData = {};
+    var hasAtLeastOneValue = false;
+
+    for (var j = 0; j <= lastValidHeaderIdx; j++) {
+      var headerKey = String(headers[j]).trim();
+      if (headerKey === '') continue; // Salta colonne senza header
+
+      var rawValue = (j < row.length) ? row[j] : null;
+      var convertedValue = convertCell(rawValue);
+
+      rowData[headerKey] = convertedValue;
+
+      if (convertedValue !== null) {
+        hasAtLeastOneValue = true;
+      }
+    }
+
+    // Aggiunge la riga solo se ha almeno un campo valorizzato
+    if (hasAtLeastOneValue) {
+      result.push(rowData);
+      debugLog('readSheet - riga ' + (i + 1) + ' processata', rowData);
+    }
+  }
+
+  debugLog('readSheet - oggetti risultanti per ' + sheetName, result.length);
+  return result;
+}
+
+// ──────────────────────────────────────────────────────────────
+// doGet — Punto di ingresso per le richieste GET
+// Parametro opzionale: ?sheet=NomeFoglio  (default: Timeline)
+// Parametro opzionale: ?action=listSheets  per ottenere i nomi dei fogli
+// ──────────────────────────────────────────────────────────────
+function doGet(e) {
+  try {
+    var params = (e && e.parameter) ? e.parameter : {};
+    var action = params.action || 'getData';
+    var sheetName = params.sheet || SHEET_NAMES.TIMELINE;
+
+    debugLog('doGet - action', action);
+    debugLog('doGet - sheetName', sheetName);
+
+    // Azione speciale: restituisce la lista dei fogli disponibili
+    if (action === 'listSheets') {
+      var ss = SpreadsheetApp.getActiveSpreadsheet();
+      var sheets = ss.getSheets().map(function(s) { return s.getName(); });
+      return buildJsonResponse({ status: 'success', sheets: sheets });
+    }
+
+    // Azione: lettura dati da un foglio specifico
+    var result = readSheet(sheetName);
+
+    var risposta = {
+      status: 'success',
+      sheet: sheetName,
+      count: result.length,
+      message: 'Dati recuperati con successo da "' + sheetName + '"',
+      data: result
+    };
+
+    debugLog('doGet - risposta inviata, oggetti', result.length);
+    return buildJsonResponse(risposta);
+
+  } catch (err) {
+    Logger.log('[D.U.B.I.A. ERROR] doGet: ' + err.toString());
+    return buildJsonResponse({ status: 'error', message: err.toString() });
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// doPost — Salva dati ricevuti dal client
+// ──────────────────────────────────────────────────────────────
+function doPost(e) {
+  var risposta = { status: 'error', message: 'Richiesta non valida' };
+
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      throw new Error('Nessun dato ricevuto nel body della richiesta POST.');
+    }
+
+    var datiRicevuti = JSON.parse(e.postData.contents);
+    debugLog('doPost - datiRicevuti', datiRicevuti);
+
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var eventType = datiRicevuti['event_type'] || 'pesata';
+    debugLog('doPost - eventType', eventType);
+
+    // ── Routing verso il foglio secondario appropriato ────────────────────
+    var targetSheetName = null;
+
+    if (eventType === 'cibo') {
+      targetSheetName = SHEET_NAMES.CIBO;
+    } else if (eventType === 'prelievo') {
+      targetSheetName = SHEET_NAMES.PRELIEVI;
+    } else if (eventType === 'calibrazione') {
+      targetSheetName = SHEET_NAMES.CENSIMENTO;
+    } else if (eventType === 'pesata' || eventType === 'nuovo_sangue') {
+      targetSheetName = SHEET_NAMES.PESATE;
+    } else if (eventType === 'colonia' || eventType === 'colonia_sync') {
+      targetSheetName = SHEET_NAMES.COLONIE;
+    }
+
+    // ── Salva su Timeline (per tutti tranne colonia/colonia_sync) ─────────
+    if (eventType !== 'colonia' && eventType !== 'colonia_sync') {
+      appendRowToSheet(ss, SHEET_NAMES.TIMELINE, datiRicevuti);
+    }
+
+    // ── Salva sul foglio secondario (se esiste) ───────────────────────────
+    if (targetSheetName) {
+      appendRowToSheet(ss, targetSheetName, datiRicevuti);
+    }
+
+    risposta = { status: 'success', message: 'Dati salvati con successo nel foglio "' + (targetSheetName || SHEET_NAMES.TIMELINE) + '".' };
+    debugLog('doPost - risposta', risposta);
+
+  } catch (err) {
+    Logger.log('[D.U.B.I.A. ERROR] doPost: ' + err.toString());
+    risposta = { status: 'error', message: err.toString() };
+  }
+
+  return buildJsonResponse(risposta);
+}
+
+// ──────────────────────────────────────────────────────────────
+// Helper: aggiunge una riga a un foglio, creando gli header se necessario
+// ──────────────────────────────────────────────────────────────
+function appendRowToSheet(ss, sheetName, data) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    debugLog('appendRowToSheet - foglio non trovato', sheetName);
+    return; // Foglio non esistente: ignora silenziosamente
+  }
+
+  var lastCol = sheet.getLastColumn();
+  var headers = [];
+
+  // Se il foglio è vuoto, crea le intestazioni dai campi del dato
+  if (lastCol === 0 || sheet.getLastRow() === 0) {
+    headers = Object.keys(data).filter(function(k) { return k !== 'event_type'; });
+    // Metti 'id' e 'date' per primi se presenti
+    var priorityKeys = ['id', 'date'];
+    priorityKeys.forEach(function(pk) {
+      var idx = headers.indexOf(pk);
+      if (idx > 0) {
+        headers.splice(idx, 1);
+        headers.unshift(pk);
+      }
+    });
+    sheet.appendRow(headers);
+    debugLog('appendRowToSheet - header creati per ' + sheetName, headers);
+  } else {
+    headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    // Filtra header vuoti dalla fine
+    while (headers.length > 0 && (headers[headers.length - 1] === null || headers[headers.length - 1] === '')) {
+      headers.pop();
+    }
+  }
+
+  // Costruisci la riga da aggiungere rispettando l'ordine degli header
+  var newRow = headers.map(function(header) {
+    var key = String(header).trim();
+    if (key === '') return '';
+    var val = data[key];
+    return (val !== undefined && val !== null) ? val : '';
+  });
+
+  debugLog('appendRowToSheet - riga aggiunta su ' + sheetName, newRow);
+  sheet.appendRow(newRow);
+}
+
+// ──────────────────────────────────────────────────────────────
+// Helper: costruisce una risposta JSON con headers CORS
+// ──────────────────────────────────────────────────────────────
+function buildJsonResponse(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ──────────────────────────────────────────────────────────────
+// doOptions — Risponde alle richieste preflight CORS (OPTIONS)
+// ──────────────────────────────────────────────────────────────
 function doOptions(e) {
-  return ContentService.createTextOutput("")
-    .setMimeType(ContentService.MimeType.TEXT);
+  return ContentService.createTextOutput('').setMimeType(ContentService.MimeType.TEXT);
 }

@@ -9,7 +9,7 @@
  */
 
 // Constants & Configurations
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyvLLycuFAgjcDGHJ3B1HP-wwLPUC12_JDFnzv70pFFHQd2Bg-41IMaszYsHHprp2cZSw/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzdNCct1bZF4uUJgbt2vkTF5RWr_IxtYuArDyea3yeCTT2Fjw92g8GuIzY72egOscKm4g/exec";
 
 // Tasso di apprendimento α per la discesa del gradiente
 const ALPHA = 1e-6;
@@ -254,6 +254,9 @@ const loadInitialData = async () => {
         } else {
             const jsonResponse = await response.json();
 
+            // ── DEBUG: stampa il JSON grezzo completo in transito ───────────────
+            console.debug('[D.U.B.I.A. DEBUG] Risposta grezza GAS:', JSON.stringify(jsonResponse));
+
             if (jsonResponse && jsonResponse.status === "error") {
                 showNotification("Errore Database Cloud", `Il server ha risposto: ${jsonResponse.message}.`, "alert");
                 throw new Error("Cloud database error: " + jsonResponse.message);
@@ -261,20 +264,60 @@ const loadInitialData = async () => {
 
             const data = jsonResponse.data || jsonResponse;
             if (Array.isArray(data) && data.length > 0) {
-                appState.measurements = data.map(m => ({
-                    ...m,
-                    total_weight:     parseFloat(m.total_weight)     || parseFloat(m.Biomassa) || 0,
-                    food_amount:      parseFloat(m.food_amount)      || 0,
-                    harvest_amount:   parseFloat(m.harvest_amount)   || 0,
-                    adult_ratio:      parseFloat(m.adult_ratio)      || 0,
-                    predicted_weight: parseFloat(m.predicted_weight) || 0,
-                    health_index:     parseFloat(m.health_index)     || 0,
-                    is_new_blood:     m.is_new_blood === 'true' || m.is_new_blood === true
-                })).sort((a, b) => new Date(a.date || a['Data Reale']) - new Date(b.date || b['Data Reale']));
+                console.info(`[D.U.B.I.A.] Ricevuti ${data.length} record dal cloud. Avvio mapping...`);
 
-                appState.measurements.forEach(m => {
-                    if (!m.date && m['Data Reale']) m.date = m['Data Reale'];
-                });
+                appState.measurements = data.map((m, idx) => {
+                    // ── DEBUG: mostra ogni oggetto grezzo in transito ───────
+                    console.debug(`[D.U.B.I.A. DEBUG] Record[${idx}] grezzo:`, JSON.stringify(m));
+
+                    // Normalizza la data — accetta vari nomi di colonna
+                    const rawDate = m.date || m['Data Reale'] || m['Date'] || null;
+
+                    // Null-safe parseFloat: null dal GAS nuovo arriva come null,
+                    // non come stringa vuota; parseFloat(null) === NaN quindi il
+                    // fallback con || 0 funziona correttamente.
+                    const totalWeight     = parseFloat(m.total_weight)     || parseFloat(m.Biomassa) || 0;
+                    const foodAmount      = parseFloat(m.food_amount)      || 0;
+                    const harvestAmount   = parseFloat(m.harvest_amount)   || 0;
+                    const adultRatio      = (m.adult_ratio !== null && m.adult_ratio !== undefined)
+                                              ? (parseFloat(m.adult_ratio) || 0) : 0;
+                    const predictedWeight = parseFloat(m.predicted_weight) || 0;
+                    // health_index=0 è valido, quindi usiamo 100 solo se il campo manca del tutto
+                    const healthIndex     = (m.health_index !== null && m.health_index !== undefined)
+                                              ? (parseFloat(m.health_index) || 0) : 100;
+                    const isNewBlood      = m.is_new_blood === 'true' || m.is_new_blood === true;
+
+                    const mapped = {
+                        ...m,
+                        date:             rawDate,
+                        total_weight:     totalWeight,
+                        food_amount:      foodAmount,
+                        harvest_amount:   harvestAmount,
+                        adult_ratio:      adultRatio,
+                        predicted_weight: predictedWeight,
+                        health_index:     healthIndex,
+                        is_new_blood:     isNewBlood
+                    };
+
+                    // ── DEBUG: mostra l'oggetto dopo il mapping ─────────────
+                    console.debug(`[D.U.B.I.A. DEBUG] Record[${idx}] mappato:`, JSON.stringify(mapped));
+                    return mapped;
+                })
+                // Filtra record senza data valida per non rompere il sort
+                .filter((m, idx) => {
+                    if (!m.date) {
+                        console.warn(`[D.U.B.I.A.] Record[${idx}] senza data scartato:`, JSON.stringify(m));
+                        return false;
+                    }
+                    return true;
+                })
+                .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                console.info(`[D.U.B.I.A.] ${appState.measurements.length} misure valide caricate dal cloud.`);
+                if (appState.measurements.length > 0) {
+                    console.debug('[D.U.B.I.A. DEBUG] Prima misura finale:', JSON.stringify(appState.measurements[0]));
+                    console.debug('[D.U.B.I.A. DEBUG] Ultima misura finale:', JSON.stringify(appState.measurements[appState.measurements.length - 1]));
+                }
 
                 // ── STEP 3: Ricostruisce theta1/theta2 dalle misure cloud ─────
                 // Questo è il fix principale della divergenza mobile/desktop:
@@ -293,6 +336,8 @@ const loadInitialData = async () => {
 
                 showNotification("Sincronizzazione", "Dati cloud caricati con successo.", "success");
                 return;
+            } else {
+                console.info('[D.U.B.I.A.] Il cloud ha restituito 0 record (foglio vuoto o solo header).');
             }
         }
     } catch (e) {
