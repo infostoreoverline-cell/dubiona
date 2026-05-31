@@ -1022,12 +1022,31 @@ const calculateColonyMetrics = (W_t, A_t, params) => {
 
     // Applica calibrazioni manuali se presenti (sovrascrivono il Modulo 4 sia localmente che nel censusData ritornato)
     const calibs = (params && params.manualCalibrations) || {};
-    const fCount   = calibs['FEMALE']   !== undefined ? calibs['FEMALE']   : censusData.N_femmine;
-    const mCount   = calibs['MALE']     !== undefined ? calibs['MALE']     : censusData.N_maschi;
-    const saCount  = calibs['SUBADULT'] !== undefined ? calibs['SUBADULT'] : 0;
-    const medCount = calibs['MEDIUM']   !== undefined ? calibs['MEDIUM']   : censusData.N_medie;
-    const smCount  = calibs['SMALL']    !== undefined ? calibs['SMALL']    : 0;
-    const bCount   = calibs['BABY']     !== undefined ? calibs['BABY']     : censusData.N_baby;
+    let fCount   = calibs['FEMALE']   !== undefined ? calibs['FEMALE']   : censusData.N_femmine;
+    let mCount   = calibs['MALE']     !== undefined ? calibs['MALE']     : censusData.N_maschi;
+    let saCount  = calibs['SUBADULT'] !== undefined ? calibs['SUBADULT'] : 0;
+    let medCount = calibs['MEDIUM']   !== undefined ? calibs['MEDIUM']   : censusData.N_medie;
+    let smCount  = calibs['SMALL']    !== undefined ? calibs['SMALL']    : 0;
+    let bCount   = calibs['BABY']     !== undefined ? calibs['BABY']     : censusData.N_baby;
+    
+    // FAILSAFE: Evita la "Biomassa Fantasma". Se le calibrazioni pesano più della bilancia, ignorale.
+    const calibratedWeight = (fCount * MASS.FEMALE) + (mCount * MASS.MALE) + (saCount * MASS.SUBADULT) + (medCount * MASS.MEDIUM) + (smCount * MASS.SMALL) + (bCount * MASS.BABY);
+    let isManualOverrideActive = false;
+    
+    if (Object.keys(calibs).length > 0) {
+        if (calibratedWeight > W_t) {
+            console.warn(`Ghost Biomass Failsafe: Peso calibrato (${calibratedWeight}g) > Bilancia (${W_t}g). Calibrazioni ignorate.`);
+            fCount = censusData.N_femmine;
+            mCount = censusData.N_maschi;
+            saCount = 0;
+            medCount = censusData.N_medie;
+            smCount = 0;
+            bCount = censusData.N_baby;
+        } else {
+            isManualOverrideActive = true;
+        }
+    }
+
     const totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
 
     // IMPORTANTISSIMO: Dobbiamo iniettare i valori ricalibrati nel censusData stesso,
@@ -1087,6 +1106,8 @@ const calculateColonyMetrics = (W_t, A_t, params) => {
     return Object.freeze({
         // Censimento (da DUBIA.census)
         census: censusData,
+        // Flag per calibrazioni attive valide
+        isManualOverrideActive,
         // Conteggi (con eventuale override calibrazioni manuali)
         fCount, mCount, saCount, medCount, smCount, bCount, totalCount,
         // Metriche derivate
@@ -1193,6 +1214,16 @@ const updateCensusTable = (W_t, A_t, metricsOverride) => {
         ];
     }
 
+    const formulaBox = document.getElementById('censusFormulaBox');
+    const banner = document.getElementById('censusOverrideBanner');
+    if (metricsOverride && metricsOverride.isManualOverrideActive) {
+        if (formulaBox) formulaBox.style.display = 'none';
+        if (banner) banner.style.display = 'block';
+    } else {
+        if (formulaBox) formulaBox.style.display = ''; // Let CSS display: grid apply
+        if (banner) banner.style.display = 'none';
+    }
+
     tbody.innerHTML = rows.map(r => {
         let destColor = 'var(--text-muted)';
         let destIcon  = '📊';
@@ -1239,6 +1270,18 @@ const updateAlignmentStatus = () => {
         msg.style.color = "var(--alert-red)";
         details.innerHTML = `Le tue colonie pesano fisicamente <strong>${divergence.lockedWeight.toFixed(1)}g</strong>, che supera il peso totale sulla bilancia (${latest.total_weight.toFixed(1)}g). Impossibile calibrare. Controlla i tuoi conteggi.`;
         btnSync.style.display = 'none';
+        
+        const btnReset = document.getElementById('btnResetCalibrations');
+        if (btnReset) {
+            btnReset.style.display = 'block';
+            btnReset.onclick = () => {
+                delete appState.params.manualCalibrations;
+                saveParams(appState.params);
+                updateDashboard();
+                updateColoniesUI();
+                showNotification('Reset Completato', 'Le calibrazioni manuali sono state rimosse. Il censimento è tornato in modalità puro Modulo 4.', 'success');
+            };
+        }
     } else if (divergence.hasConflict) {
         container.style.backgroundColor = "rgba(242, 201, 76, 0.1)";
         container.style.borderColor = "#F2C94C";
@@ -1254,6 +1297,8 @@ const updateAlignmentStatus = () => {
         
         details.innerHTML = deltaHtml;
         btnSync.style.display = 'block';
+        const btnReset = document.getElementById('btnResetCalibrations');
+        if (btnReset) btnReset.style.display = 'none';
 
         // Logica del pulsante Sync
         btnSync.onclick = () => {
@@ -1299,6 +1344,8 @@ const updateAlignmentStatus = () => {
         msg.style.color = "var(--accent-green)";
         details.innerHTML = "Il peso teorico e le colonie fisiche sono in perfetto equilibrio.";
         btnSync.style.display = 'none';
+        const btnReset = document.getElementById('btnResetCalibrations');
+        if (btnReset) btnReset.style.display = 'none';
     }
 };
 

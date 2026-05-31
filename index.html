@@ -201,6 +201,7 @@
                     <div id="alignmentStatusMessage" style="font-weight: 500; margin-bottom: 0.5rem;">Analisi in corso...</div>
                     <div id="alignmentStatusDetails" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;"></div>
                     <button id="btnSyncCensus" class="btn-standard" style="display: none; background-color: var(--accent-purple); width: 100%;">Sincronizza Censimento con Colonie</button>
+                    <button id="btnResetCalibrations" class="btn-standard" style="display: none; background-color: var(--alert-red); width: 100%; margin-top: 0.5rem;">Resetta Calibrazioni Manuali</button>
                 </div>
             </div>
 
@@ -209,13 +210,18 @@
                 <p class="subtitle-text">Calcolato secondo il Modulo 4 del Teorema D.U.B.I.A. &nbsp;·&nbsp; Aggiornato automaticamente ad ogni pesata</p>
 
                 <!-- Formula reference -->
-                <div class="formula-box" style="margin-bottom:1rem;">
+                <div id="censusFormulaBox" class="formula-box" style="margin-bottom:1rem;">
                     <div class="formula-row"><span class="formula-label">W_adulti</span><span class="formula-eq">= W_t × A_t</span></div>
                     <div class="formula-row"><span class="formula-label">W_neanidi</span><span class="formula-eq">= W_t × (1 − A_t)</span></div>
                     <div class="formula-row"><span class="formula-label">N_femmine</span><span class="formula-eq">= (W_adulti × 0.77) / 2.5g</span></div>
                     <div class="formula-row"><span class="formula-label">N_maschi</span><span class="formula-eq">= (W_adulti × 0.23) / 1.5g</span></div>
                     <div class="formula-row"><span class="formula-label">N_medie</span><span class="formula-eq">= (W_neanidi × 70%) / 0.8g</span></div>
                     <div class="formula-row"><span class="formula-label">N_baby</span><span class="formula-eq">= (W_neanidi × 30%) / 0.1g</span></div>
+                </div>
+
+                <!-- Banner Sovrascrittura -->
+                <div id="censusOverrideBanner" style="display:none; background-color: rgba(242, 201, 76, 0.1); border: 1px solid #F2C94C; color: #F2C94C; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem;">
+                    ⚠️ <strong>Dati Reali Attivi:</strong> Le quantità e i pesi qui sotto derivano dalle tue calibrazioni fisiche (colonie). Le formule teoriche del Modulo 4 puro sono state adattate per riflettere la realtà dei tuoi box.
                 </div>
 
                 <div class="table-container">
