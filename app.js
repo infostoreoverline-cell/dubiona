@@ -1,4 +1,4 @@
-/* global Chart, QRCode, Html5QrcodeScanner, DUBIA */
+/* global Chart, QRCode, Html5Qrcode, DUBIA */
 /**
  * D.U.B.I.A. Engine - Dynamic Updating Biomass Inference Algorithm
  * 
@@ -3080,29 +3080,43 @@ const generateQRCode = (colony) => {
 };
 
 /**
- * Gestione scanner QR
+/**
+ * Gestione scanner QR — usa Html5Qrcode (API low-level)
+ * per avviare direttamente la fotocamera posteriore senza
+ * mostrare nessun menu di selezione all'utente.
  */
-let html5QrcodeScanner = null;
+let html5QrInstance = null;
+let qrScannerRunning = false;
 
-const startQRScanner = () => {
+const startQRScanner = async () => {
     document.getElementById('qrScanError').style.display = 'none';
     document.getElementById('qrScannerModal').classList.add('active');
-    
-    if (!html5QrcodeScanner) {
-        html5QrcodeScanner = new Html5QrcodeScanner(
-            "qr-reader", 
-            { fps: 10, qrbox: {width: 250, height: 250} }, 
-            /* verbose= */ false
-        );
+
+    // Mostra il loader, nasconde il video finché la cam non è pronta
+    document.getElementById('qrCameraLoader').style.display = 'flex';
+    document.getElementById('qrVideoWrapper').style.display = 'none';
+
+    // Se c'è già un'istanza attiva, fermala prima di ricominciare
+    if (html5QrInstance && qrScannerRunning) {
+        try { await html5QrInstance.stop(); } catch(e) {}
+        qrScannerRunning = false;
     }
-    
-    html5QrcodeScanner.render((decodedText, decodedResult) => {
-        // success
+
+    // Crea una nuova istanza che userà #qr-reader come container video
+    html5QrInstance = new Html5Qrcode("qr-reader");
+
+    const config = {
+        fps: 12,
+        qrbox: { width: 220, height: 220 },
+        aspectRatio: 1.0,
+        disableFlip: false
+    };
+
+    const onSuccess = (decodedText) => {
         try {
             const data = JSON.parse(decodedText);
             if (data && data.dubia_colony_id) {
-                html5QrcodeScanner.clear();
-                document.getElementById('qrScannerModal').classList.remove('active');
+                stopQRScanner();
                 showColonyDetails(data.dubia_colony_id);
             } else {
                 document.getElementById('qrScanError').style.display = 'block';
@@ -3110,17 +3124,72 @@ const startQRScanner = () => {
         } catch(e) {
             document.getElementById('qrScanError').style.display = 'block';
         }
-    }, (error) => {
-        // failure - just ignore to keep scanning
-    });
+    };
+
+    const onFailure = () => { /* scansione continua in silenzio */ };
+
+    try {
+        // Prova prima con la fotocamera posteriore (environment)
+        await html5QrInstance.start(
+            { facingMode: "environment" },
+            config,
+            onSuccess,
+            onFailure
+        );
+        qrScannerRunning = true;
+
+        // Fotocamera avviata: nascondi loader, mostra video con mirino
+        document.getElementById('qrCameraLoader').style.display = 'none';
+        document.getElementById('qrVideoWrapper').style.display = 'block';
+
+        // Sposta il <video> generato dalla libreria dentro il wrapper
+        const video = document.querySelector('#qr-reader video');
+        if (video) {
+            video.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:12px;';
+        }
+
+    } catch (err) {
+        // Fallback: nessuna fotocamera posteriore — usa qualsiasi fotocamera disponibile
+        console.warn('[D.U.B.I.A.] Fotocamera posteriore non disponibile, provo con qualsiasi cam:', err);
+        try {
+            const cameras = await Html5Qrcode.getCameras();
+            if (!cameras || cameras.length === 0) {
+                throw new Error('Nessuna fotocamera disponibile su questo dispositivo.');
+            }
+            await html5QrInstance.start(
+                cameras[cameras.length - 1].id, // ultima = di solito la posteriore
+                config,
+                onSuccess,
+                onFailure
+            );
+            qrScannerRunning = true;
+            document.getElementById('qrCameraLoader').style.display = 'none';
+            document.getElementById('qrVideoWrapper').style.display = 'block';
+        } catch (fallbackErr) {
+            qrScannerRunning = false;
+            document.getElementById('qrCameraLoader').style.display = 'none';
+            document.getElementById('qrScanError').style.display = 'block';
+            document.getElementById('qrScanError').textContent = '❌ Impossibile accedere alla fotocamera: ' + fallbackErr.message;
+            console.error('[D.U.B.I.A.] QR scanner error:', fallbackErr);
+        }
+    }
 };
 
-const stopQRScanner = () => {
-    if (html5QrcodeScanner) {
-        html5QrcodeScanner.clear();
-    }
+const stopQRScanner = async () => {
     document.getElementById('qrScannerModal').classList.remove('active');
+    document.getElementById('qrCameraLoader').style.display = 'none';
+    document.getElementById('qrVideoWrapper').style.display = 'none';
+
+    if (html5QrInstance && qrScannerRunning) {
+        try {
+            await html5QrInstance.stop();
+        } catch(e) {
+            console.warn('[D.U.B.I.A.] Errore nello stop scanner:', e);
+        }
+        qrScannerRunning = false;
+    }
 };
+
 
 // ── Inizializzazione Event Listener Colonie ─────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {

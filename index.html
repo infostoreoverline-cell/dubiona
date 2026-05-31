@@ -911,13 +911,32 @@
 
     <!-- MODAL QR SCANNER -->
     <div class="modal-overlay" id="qrScannerModal">
-        <div class="modal" style="max-width: 500px; padding: 1rem; position: relative;">
+        <div class="modal" style="max-width: 420px; padding: 1rem; position: relative;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                 <h2 style="margin: 0;">📷 Scansiona QR</h2>
-                <button type="button" class="btn-standard btn-cancel" id="btnCloseQrScanner" style="padding: 0.4rem 0.8rem;">X</button>
+                <button type="button" class="btn-standard btn-cancel" id="btnCloseQrScanner" style="padding: 0.4rem 0.8rem;">✕</button>
             </div>
-            <div id="qr-reader" style="width:100%; border-radius: 8px; overflow: hidden;"></div>
-            <p id="qrScanError" style="color: var(--alert-red); font-size: 0.85rem; margin-top: 1rem; text-align: center; display: none;">QR Code non valido.</p>
+
+            <!-- Spinner visibile mentre la fotocamera si avvia -->
+            <div id="qrCameraLoader">
+                <div class="spinner"></div>
+                <span>Avvio fotocamera posteriore...</span>
+            </div>
+
+            <!-- Wrapper video con mirino sovrapposto -->
+            <div id="qrVideoWrapper" style="display: none;">
+                <!-- Html5Qrcode inserisce il <video> qui dentro -->
+                <div id="qr-reader"></div>
+                <!-- Linea di scansione animata -->
+                <div id="qrScanLine"></div>
+            </div>
+
+            <p style="text-align:center; font-size:0.78rem; color:var(--text-muted); margin-top:0.75rem;">
+                Inquadra il QR Code della colonia
+            </p>
+            <p id="qrScanError" style="color: var(--alert-red); font-size: 0.85rem; margin-top: 0.5rem; text-align: center; display: none;">
+                ⚠️ QR Code non riconosciuto o non valido per D.U.B.I.A.
+            </p>
         </div>
     </div>
 
