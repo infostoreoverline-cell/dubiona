@@ -3377,29 +3377,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             const latest = appState.measurements[appState.measurements.length - 1];
-            // Ottieni metriche globali
+            // Ottieni metriche globali - Safe parsing garantito
             const metrics = calculateColonyMetrics(latest.total_weight, latest.adult_ratio, appState.params);
             
-            let globM = metrics.mCount;
-            let globF = metrics.fCount;
-            let globSub = metrics.saCount;
-            let globMed = metrics.medCount;
-            let globSm = metrics.smCount;
-            let globB = metrics.bCount;
+            let globM = parseInt(metrics.mCount, 10) || 0;
+            let globF = parseInt(metrics.fCount, 10) || 0;
+            let globSub = parseInt(metrics.saCount, 10) || 0;
+            let globMed = parseInt(metrics.medCount, 10) || 0;
+            let globSm = parseInt(metrics.smCount, 10) || 0;
+            let globB = parseInt(metrics.bCount, 10) || 0;
 
             const currentIdVal = document.getElementById('colonyId').value;
+            const skipIdString = currentIdVal ? String(currentIdVal).trim() : null;
 
-            // Sottrai tutti gli assegnati
+            // Sottrai tutti gli assegnati (Safe Parsing estremo)
             appState.colonies.forEach(c => {
-                if (currentIdVal && Number(currentIdVal) === c.id) return; // Escludi la colonia corrente se in modifica
-                globM -= (c.males_count || 0);
-                globF -= (c.females_count || 0);
-                globSub -= (c.subadults_count || 0);
-                globMed -= (c.medium_count || 0);
-                globSm -= (c.small_count || 0);
-                globB -= (c.baby_count || 0);
+                // Controllo di esistenza
+                if (!c) return;
+
+                // Escludi la colonia corrente se in modifica usando comparazione tra stringhe
+                if (skipIdString !== null && String(c.id).trim() === skipIdString) return;
+
+                globM -= parseInt(c.males_count, 10) || 0;
+                globF -= parseInt(c.females_count, 10) || 0;
+                globSub -= parseInt(c.subadults_count, 10) || 0;
+                globMed -= parseInt(c.medium_count, 10) || 0;
+                globSm -= parseInt(c.small_count, 10) || 0;
+                globB -= parseInt(c.baby_count, 10) || 0;
             });
 
+            // Assegnazione rigorosamente >= 0
             document.getElementById('colonyMales').value = Math.max(0, globM);
             document.getElementById('colonyFemales').value = Math.max(0, globF);
             document.getElementById('colonySubadults').value = Math.max(0, globSub);
