@@ -1,4 +1,4 @@
-﻿/* global Chart, QRCode, Html5Qrcode, DUBIA */
+/* global Chart, QRCode, Html5Qrcode, DUBIA */
 /**
  * D.U.B.I.A. Engine - Dynamic Updating Biomass Inference Algorithm
  * 
@@ -3094,6 +3094,32 @@ const updateColoniesUI = () => {
             const isPasto = c.type === 'Pasto';
             const color = isBaby ? '#f1c40f' : (isPasto ? '#3498db' : 'var(--accent-purple)');
             
+            // Calcolo infografica
+            const males = parseInt(c.males_count) || 0;
+            const females = parseInt(c.females_count) || 0;
+            const nymphs = (parseInt(c.subadults_count) || 0) + (parseInt(c.medium_count) || 0) + (parseInt(c.small_count) || 0) + (parseInt(c.baby_count) || 0);
+            const total = males + females + nymphs;
+            
+            let infographicHTML = '';
+            if (total > 0) {
+                const pFemales = (females / total) * 100;
+                const pMales = (males / total) * 100;
+                const pNymphs = (nymphs / total) * 100;
+                infographicHTML = `
+                <div style="margin-top: 12px; margin-bottom: 4px; padding: 0 4px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.7rem; color: #888; margin-bottom: 6px;">
+                        <span style="color: #e84393; font-weight: bold;">♀️ ${pFemales.toFixed(0)}%</span>
+                        <span style="color: #0984e3; font-weight: bold;">♂️ ${pMales.toFixed(0)}%</span>
+                        <span style="color: #fdcb6e; font-weight: bold;">🐛 ${pNymphs.toFixed(0)}%</span>
+                    </div>
+                    <div style="width: 100%; height: 6px; border-radius: 3px; display: flex; overflow: hidden; background: #2a2a40; box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);">
+                        <div style="width: ${pFemales}%; background: #e84393; transition: width 0.5s ease;"></div>
+                        <div style="width: ${pMales}%; background: #0984e3; transition: width 0.5s ease;"></div>
+                        <div style="width: ${pNymphs}%; background: #fdcb6e; transition: width 0.5s ease;"></div>
+                    </div>
+                </div>`;
+            }
+            
             return `
             <div class="colony-card" data-id="${c.id}">
                 <div class="colony-card-header">
@@ -3108,6 +3134,7 @@ const updateColoniesUI = () => {
                     <span>♂️ ${c.males_count || '--'}</span>
                     <span>♀️ ${c.females_count || '--'}</span>
                 </div>
+                ${infographicHTML}
                 ${c.notes ? `<div class="subtitle-text" style="font-size: 0.8rem; margin-top: 0.5rem;">${c.notes}</div>` : ''}
             </div>`;
         }).join('');
