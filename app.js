@@ -21,7 +21,7 @@ const generateUUID = () =>
         return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
     });
 
-const cloudPost = async (payload, { retries = 2 } = {}) => {
+const cloudPost = async (payload, { retries = 4 } = {}) => {
     if (!payload.event_id) payload.event_id = generateUUID();
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
@@ -36,10 +36,13 @@ const cloudPost = async (payload, { retries = 2 } = {}) => {
             return { ok: true, data: json };
         } catch (e) {
             if (attempt === retries) {
-                console.warn('[D.U.B.I.A.] cloudPost fallito:', e.message);
+                console.warn('[D.U.B.I.A.] cloudPost fallito dopo ' + (retries + 1) + ' tentativi:', e.message);
                 return { ok: false, error: e.message };
             }
-            const delay = 800 * Math.pow(2, attempt);
+            // Exponential Backoff: 2s, 4s, 8s, 16s + jitter casuale (0-500ms)
+            // Sicuro grazie all'idempotenza L1+L2: il backend ignora UUID duplicati
+            const delay = 2000 * Math.pow(2, attempt) + Math.floor(Math.random() * 500);
+            console.info(`[D.U.B.I.A.] Retry ${attempt + 1}/${retries} tra ${delay}ms...`);
             await new Promise(r => setTimeout(r, delay));
         }
     }
