@@ -9,7 +9,7 @@
  */
 
 // Constants & Configurations
-const GAS_URL = "https://script.google.com/macros/s/AKfycbw_DEyOdnAuezhtE7L1sjrKBBsGBxx84Zd60vQYcUtt1iW-7m5uL3baTi5LoDPgPSDUoA/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxBlkBiJbJnxTHReQhHxymp9aXeORrz7otmonSeMszzThHovXYvdR-LforaRjv_jdxgfQ/exec";
 
 // ══════════════════════════════════════════════════════════════
 // CLOUD LAYER V2
