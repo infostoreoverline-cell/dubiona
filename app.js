@@ -1,4 +1,4 @@
-/* global Chart, QRCode, Html5Qrcode, DUBIA */
+﻿/* global Chart, QRCode, Html5Qrcode, DUBIA */
 /**
  * D.U.B.I.A. Engine - Dynamic Updating Biomass Inference Algorithm
  * 
@@ -10,6 +10,136 @@
 
 // Constants & Configurations
 const GAS_URL = "https://script.google.com/macros/s/AKfycbw_DEyOdnAuezhtE7L1sjrKBBsGBxx84Zd60vQYcUtt1iW-7m5uL3baTi5LoDPgPSDUoA/exec";
+
+// ══════════════════════════════════════════════════════════════
+// CLOUD LAYER V2
+// ══════════════════════════════════════════════════════════════
+
+const generateUUID = () =>
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+
+const cloudPost = async (payload, { retries = 2 } = {}) => {
+    if (!payload.event_id) payload.event_id = generateUUID();
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            const res = await fetch(GAS_URL, {
+                method: 'POST', redirect: 'follow',
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                body: JSON.stringify(payload)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const json = await res.json();
+            if (json.status === 'error') throw new Error(json.message);
+            return { ok: true, data: json };
+        } catch (e) {
+            if (attempt === retries) {
+                console.warn('[D.U.B.I.A.] cloudPost fallito:', e.message);
+                return { ok: false, error: e.message };
+            }
+            const delay = 800 * Math.pow(2, attempt);
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+};
+
+const cloudGet = async (sheet, timeoutMs = 8000) => {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        const res = await fetch(`${GAS_URL}?sheet=${encodeURIComponent(sheet)}`, {
+            redirect: 'follow', signal: controller.signal
+        });
+        clearTimeout(tid);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        if (json.status === 'error') throw new Error(json.message);
+        return json.data || [];
+    } catch (e) {
+        clearTimeout(tid);
+        console.warn(`[D.U.B.I.A.] cloudGet(${sheet}) fallito:`, e.message);
+        return [];
+    }
+};
+
+const OFFLINE_QUEUE_KEY = 'dubia_offline_queue_v2';
+
+const queuePush = (payload) => {
+    try {
+        const q = JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]');
+        q.push({ payload, ts: Date.now() });
+        localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(q));
+        console.info(`[D.U.B.I.A.] Offline queue: ${q.length} item.`);
+    } catch (e) { console.warn('[D.U.B.I.A.] queuePush:', e.message); }
+};
+
+const flushOfflineQueue = async () => {
+    let q;
+    try { q = JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]'); } catch (e) { return; }
+    if (q.length === 0) return;
+    console.info(`[D.U.B.I.A.] Flush offline queue: ${q.length} item...`);
+    if (typeof showNotification === 'function')
+        showNotification('Sincronizzazione Offline', `Invio di ${q.length} operazione/i in sospeso...`, 'success');
+    const remaining = [];
+    for (const item of q) {
+        const result = await cloudPost(item.payload, { retries: 1 });
+        if (!result.ok) { remaining.push(item); break; }
+    }
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
+    if (remaining.length === 0 && q.length > 0 && typeof showNotification === 'function')
+        showNotification('Sincronizzazione Completata', `${q.length} operazione/i offline inviate.`, 'success');
+};
+
+const cloudPostWithQueue = async (payload, opts = {}) => {
+    if (!payload.event_id) payload.event_id = generateUUID();
+    if (!navigator.onLine) { queuePush(payload); return { ok: true, queued: true }; }
+    return cloudPost(payload, opts);
+};
+
+window.addEventListener('online', () => { console.info('[D.U.B.I.A.] Online: flush queue...'); flushOfflineQueue(); });
+
+let _backgroundSyncTimer = null;
+
+const mapTimelineData = (data) =>
+    data.map(m => ({
+        ...m,
+        date:             m.date || null,
+        total_weight:     parseFloat(m.total_weight)     || 0,
+        food_amount:      parseFloat(m.food_amount)      || 0,
+        harvest_amount:   parseFloat(m.harvest_amount)   || 0,
+        adult_ratio:      (m.adult_ratio !== null && m.adult_ratio !== undefined) ? (parseFloat(m.adult_ratio) || 0) : 0,
+        predicted_weight: parseFloat(m.predicted_weight) || 0,
+        health_index:     (m.health_index !== null && m.health_index !== undefined) ? (parseFloat(m.health_index) || 0) : 100,
+        is_new_blood:     m.is_new_blood === 'true' || m.is_new_blood === true
+    }))
+    .filter(m => !!m.date)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+const startBackgroundSync = () => {
+    if (_backgroundSyncTimer) return;
+    _backgroundSyncTimer = setInterval(async () => {
+        if (document.hidden || !navigator.onLine) return;
+        try {
+            const data = await cloudGet('Timeline', 6000);
+            if (data.length > 0 && data.length !== appState.measurements.length) {
+                const mapped = mapTimelineData(data);
+                if (mapped.length !== appState.measurements.length) {
+                    appState.measurements = mapped;
+                    if (typeof updateUI === 'function') updateUI();
+                    console.info(`[D.U.B.I.A.] Background sync: ${mapped.length} record.`);
+                }
+            }
+        } catch (e) { /* silenzioso */ }
+    }, 45000);
+};
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { clearInterval(_backgroundSyncTimer); _backgroundSyncTimer = null; }
+    else startBackgroundSync();
+});
+
 
 // Tasso di apprendimento α per la discesa del gradiente
 const ALPHA = 1e-6;
@@ -200,30 +330,21 @@ const rebuildParamsFromMeasurements = (measurements) => {
 };
 
 const loadInitialData = async () => {
-    // ── STEP 1: Carica parametri da IndexedDB in modo SINCRONO (awaited) ──────
-    // BUG FIX: il vecchio codice usava un callback non-awaited, causando race
-    // condition con il fetch cloud che sovrascriveva i params a caso.
+    // ── STEP 1: Parametri da IndexedDB ──────────────────────────────────
     const storedParams = await new Promise((resolve) => {
         const tx = db.transaction("parameters", "readonly");
-        const store = tx.objectStore("parameters");
-        const req = store.get(1);
+        const req = tx.objectStore("parameters").get(1);
         req.onsuccess = () => resolve(req.result || null);
         req.onerror  = () => resolve(null);
     });
-
-    // Valida i parametri: reset se fuori range D.U.B.I.A. (es. vecchi 0.05/0.01)
     appState.params = validateAndMigrateParams(storedParams);
-    if (!storedParams) {
-        saveParams(appState.params); // Prima volta: salva i default
-    }
+    if (!storedParams) saveParams(appState.params);
+    console.info(`[D.U.B.I.A.] Params: th1=${appState.params.theta1.toFixed(4)}, th2=${appState.params.theta2.toFixed(4)}`);
 
-    console.info(`[D.U.B.I.A.] Params caricati: θ₁=${appState.params.theta1.toFixed(4)}, θ₂=${appState.params.theta2.toFixed(4)}`);
-
-    // ── Carica prezzi personalizzati da IndexedDB ─────────────────────────
+    // ── Prezzi personalizzati ────────────────────────────────────────────
     const storedPrices = await new Promise((resolve) => {
         const tx = db.transaction("parameters", "readonly");
-        const store = tx.objectStore("parameters");
-        const req = store.get(2); // id=2 riservato ai prezzi
+        const req = tx.objectStore("parameters").get(2);
         req.onsuccess = () => resolve(req.result || null);
         req.onerror  = () => resolve(null);
     });
@@ -231,145 +352,116 @@ const loadInitialData = async () => {
         appState.customPrices = { ...DEFAULT_PRICES, ...storedPrices.prices };
     }
 
-    // ── Carica Clienti e Cessioni da IndexedDB ────────────────────────────
+    // ── Carica dati locali (IndexedDB) ───────────────────────────────────
     await loadClientsAndCessioni();
-
-    // ── Carica Colonie da IndexedDB e sincronizza dal Cloud ───────────────
     await loadColonies();
-    await syncColoniesFromCloud();
 
-    // ── STEP 2: Prova a caricare le misure dal Cloud ─────────────────────────
-    try {
+    // ── STEP 2: Download parallelo dal cloud (V2 — cloudGet con timeout) ─
+    if (navigator.onLine) {
         showNotification("Sincronizzazione", "Download dati dal cloud...", "success");
-        const response = await fetch(GAS_URL, { redirect: "follow" });
+        try {
+            const [timelineResult, clientiResult, cessioniResult, colonieResult] = await Promise.allSettled([
+                cloudGet("Timeline", 10000),
+                cloudGet("Clienti",  8000),
+                cloudGet("Cessioni", 8000),
+                cloudGet("Colonie",  8000)
+            ]);
 
-        if (!response.ok) {
-            console.warn(`Cloud fetch returned HTTP ${response.status}.`);
-            if (response.status === 401 || response.status === 403) {
-                showNotification("Errore Cloud", "Accesso negato al Cloud. Verifica permessi o URL di Google Apps Script.", "error");
-            } else if (response.status === 404) {
-                showNotification("Errore Cloud", "URL Cloud non trovato.", "error");
-            } else {
-                showNotification("Offline", "Caricamento dati locali (errore server cloud).", "warning");
-            }
-        } else {
-            const jsonResponse = await response.json();
+            // Timeline → misure principali
+            const timelineData = timelineResult.status === "fulfilled" ? timelineResult.value : [];
+            if (timelineData.length > 0) {
+                appState.measurements = mapTimelineData(timelineData);
+                console.info(`[D.U.B.I.A.] Timeline: ${appState.measurements.length} record.`);
 
-            // ── DEBUG: stampa il JSON grezzo completo in transito ───────────────
-            console.debug('[D.U.B.I.A. DEBUG] Risposta grezza GAS:', JSON.stringify(jsonResponse));
-
-            if (jsonResponse && jsonResponse.status === "error") {
-                showNotification("Errore Database Cloud", `Il server ha risposto: ${jsonResponse.message}.`, "alert");
-                throw new Error("Cloud database error: " + jsonResponse.message);
-            }
-
-            const data = jsonResponse.data || jsonResponse;
-            if (Array.isArray(data) && data.length > 0) {
-                console.info(`[D.U.B.I.A.] Ricevuti ${data.length} record dal cloud. Avvio mapping...`);
-
-                appState.measurements = data.map((m, idx) => {
-                    // ── DEBUG: mostra ogni oggetto grezzo in transito ───────
-                    console.debug(`[D.U.B.I.A. DEBUG] Record[${idx}] grezzo:`, JSON.stringify(m));
-
-                    // Normalizza la data — accetta vari nomi di colonna
-                    const rawDate = m.date || m['Data Reale'] || m['Date'] || null;
-
-                    // Null-safe parseFloat: null dal GAS nuovo arriva come null,
-                    // non come stringa vuota; parseFloat(null) === NaN quindi il
-                    // fallback con || 0 funziona correttamente.
-                    const totalWeight     = parseFloat(m.total_weight)     || parseFloat(m.Biomassa) || 0;
-                    const foodAmount      = parseFloat(m.food_amount)      || 0;
-                    const harvestAmount   = parseFloat(m.harvest_amount)   || 0;
-                    const adultRatio      = (m.adult_ratio !== null && m.adult_ratio !== undefined)
-                                              ? (parseFloat(m.adult_ratio) || 0) : 0;
-                    const predictedWeight = parseFloat(m.predicted_weight) || 0;
-                    // health_index=0 è valido, quindi usiamo 100 solo se il campo manca del tutto
-                    const healthIndex     = (m.health_index !== null && m.health_index !== undefined)
-                                              ? (parseFloat(m.health_index) || 0) : 100;
-                    const isNewBlood      = m.is_new_blood === 'true' || m.is_new_blood === true;
-
-                    const mapped = {
-                        ...m,
-                        date:             rawDate,
-                        total_weight:     totalWeight,
-                        food_amount:      foodAmount,
-                        harvest_amount:   harvestAmount,
-                        adult_ratio:      adultRatio,
-                        predicted_weight: predictedWeight,
-                        health_index:     healthIndex,
-                        is_new_blood:     isNewBlood
-                    };
-
-                    // ── DEBUG: mostra l'oggetto dopo il mapping ─────────────
-                    console.debug(`[D.U.B.I.A. DEBUG] Record[${idx}] mappato:`, JSON.stringify(mapped));
-                    return mapped;
-                })
-                // Filtra record senza data valida per non rompere il sort
-                .filter((m, idx) => {
-                    if (!m.date) {
-                        console.warn(`[D.U.B.I.A.] Record[${idx}] senza data scartato:`, JSON.stringify(m));
-                        return false;
-                    }
-                    return true;
-                })
-                .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-                console.info(`[D.U.B.I.A.] ${appState.measurements.length} misure valide caricate dal cloud.`);
-                if (appState.measurements.length > 0) {
-                    console.debug('[D.U.B.I.A. DEBUG] Prima misura finale:', JSON.stringify(appState.measurements[0]));
-                    console.debug('[D.U.B.I.A. DEBUG] Ultima misura finale:', JSON.stringify(appState.measurements[appState.measurements.length - 1]));
-                }
-
-                // ── STEP 3: Ricostruisce theta1/theta2 dalle misure cloud ─────
-                // Questo è il fix principale della divergenza mobile/desktop:
-                // i parametri appresi vengono ricalcolati deterministicamente
-                // dal log delle misure, che è lo stesso su tutti i device.
+                // Ricostruisce theta1/theta2 deterministicamente
                 if (appState.measurements.length > 1) {
                     const rebuilt = rebuildParamsFromMeasurements(appState.measurements);
                     appState.params.theta1 = rebuilt.theta1;
                     appState.params.theta2 = rebuilt.theta2;
-                    saveParams(appState.params); // Persistiamo localmente
-                    console.info(
-                        `[D.U.B.I.A.] Params ricostruiti da ${appState.measurements.length} misure cloud: ` +
-                        `θ₁=${rebuilt.theta1.toFixed(6)}, θ₂=${rebuilt.theta2.toFixed(6)}`
-                    );
+                    saveParams(appState.params);
+                    console.info(`[D.U.B.I.A.] Params ricostruiti: th1=${rebuilt.theta1.toFixed(6)}, th2=${rebuilt.theta2.toFixed(6)}`);
                 }
-
-                showNotification("Sincronizzazione", "Dati cloud caricati con successo.", "success");
-                return;
             } else {
-                console.info('[D.U.B.I.A.] Il cloud ha restituito 0 record (foglio vuoto o solo header).');
+                console.info("[D.U.B.I.A.] Timeline cloud vuota o non raggiungibile.");
             }
+
+            // Clienti cloud → merge con locale
+            const clientiData = clientiResult.status === "fulfilled" ? clientiResult.value : [];
+            if (clientiData.length > 0) {
+                const tx = db.transaction("clients", "readwrite");
+                const store = tx.objectStore("clients");
+                clientiData.forEach(c => { if (c.id) store.put({ ...c, id: Number(c.id) }); });
+                appState.clients = clientiData.map(c => ({ ...c, id: Number(c.id) }));
+                console.info(`[D.U.B.I.A.] Clienti cloud: ${clientiData.length}.`);
+            }
+
+            // Cessioni cloud → merge con locale
+            const cessioniData = cessioniResult.status === "fulfilled" ? cessioniResult.value : [];
+            if (cessioniData.length > 0) {
+                const tx = db.transaction("cessioni", "readwrite");
+                const store = tx.objectStore("cessioni");
+                cessioniData.forEach(c => { if (c.id) store.put({ ...c, id: Number(c.id) }); });
+                appState.cessioni = cessioniData
+                    .map(c => ({ ...c, id: Number(c.id), cliente_id: Number(c.cliente_id) }))
+                    .sort((a, b) => new Date(b.data) - new Date(a.data));
+                console.info(`[D.U.B.I.A.] Cessioni cloud: ${cessioniData.length}.`);
+            }
+
+            // Colonie cloud → merge con locale
+            const colonieData = colonieResult.status === "fulfilled" ? colonieResult.value : [];
+            if (colonieData.length > 0) {
+                const coloniesMap = new Map();
+                colonieData.forEach(c => { if (c.id) coloniesMap.set(Number(c.id), c); });
+                const tx = db.transaction("colonies", "readwrite");
+                const store = tx.objectStore("colonies");
+                coloniesMap.forEach((c, id) => {
+                    const mapped = {
+                        id, name: c.name || `Colonia ${id}`, type: c.type || "Pasto",
+                        creation_date: c.date || c.creation_date || new Date().toISOString().split("T")[0],
+                        current_weight: parseFloat(c.current_weight) || 0,
+                        males_count: parseInt(c.males_count) || 0, females_count: parseInt(c.females_count) || 0,
+                        subadults_count: parseInt(c.subadults_count) || 0, medium_count: parseInt(c.medium_count) || 0,
+                        small_count: parseInt(c.small_count) || 0, baby_count: parseInt(c.baby_count) || 0,
+                        notes: c.notes || ""
+                    };
+                    store.put(mapped);
+                    const idx = appState.colonies.findIndex(x => x.id === id);
+                    if (idx >= 0) appState.colonies[idx] = mapped;
+                    else appState.colonies.push(mapped);
+                });
+                console.info(`[D.U.B.I.A.] Colonie cloud: ${coloniesMap.size}.`);
+            }
+
+            showNotification("Sincronizzazione", "Dati cloud caricati con successo.", "success");
+            // Flush eventuali POST offline in coda
+            flushOfflineQueue();
+            // Avvia background sync
+            startBackgroundSync();
+            return;
+
+        } catch (e) {
+            console.warn("[D.U.B.I.A.] loadInitialData cloud error:", e.message);
+            showNotification("Errore di Rete", "Caricamento dati locali.", "warning");
         }
-    } catch (e) {
-        console.warn("Could not fetch from GAS, falling back to local DB.", e);
-        if (!navigator.onLine) {
-            showNotification("Offline", "Nessuna connessione a Internet. Caricamento dati locali.", "warning");
-        } else if (!e.message || !e.message.includes("Cloud database error")) {
-            showNotification("Errore di Rete", "Impossibile contattare il server cloud. Caricamento dati locali.", "warning");
-        }
+    } else {
+        showNotification("Offline", "Nessuna connessione. Caricamento dati locali.", "warning");
     }
 
-    // ── STEP 4 (fallback): Carica misure da IndexedDB locale ─────────────────
+    // ── STEP 3 (fallback): Misure da IndexedDB locale ────────────────────
     return new Promise((resolve) => {
-        const measTx = db.transaction("measurements", "readonly");
-        const measStore = measTx.objectStore("measurements");
-        const measReq = measStore.getAll();
-
-        measReq.onsuccess = () => {
+        const tx = db.transaction("measurements", "readonly");
+        const req = tx.objectStore("measurements").getAll();
+        req.onsuccess = () => {
             if (appState.measurements.length === 0) {
-                appState.measurements = measReq.result.sort((a, b) => new Date(a.date) - new Date(b.date));
+                appState.measurements = (req.result || []).sort((a, b) => new Date(a.date) - new Date(b.date));
             }
-
             if (appState.measurements.length === 0) {
-                showNotification("Nessun Dato Trovato", "Sia il Cloud che il Database locale sono vuoti. Clicca sul '+' per inserire la tua prima Rilevazione.", "warning");
+                showNotification("Nessun Dato", "Cloud e DB locale vuoti. Inserisci la tua prima rilevazione.", "warning");
             }
-
             resolve();
         };
     });
 };
-
 
 const saveParams = (params) => {
     const tx = db.transaction("parameters", "readwrite");
@@ -415,17 +507,18 @@ const loadClientsAndCessioni = () => {
  * Salva un nuovo cliente o aggiorna uno esistente in IndexedDB.
  * Se client.id è undefined, viene creato (autoIncrement).
  */
-const saveClient = (client) => {
+const saveClient = async (client) => {
     return new Promise((resolve) => {
         const tx = db.transaction("clients", "readwrite");
         const store = tx.objectStore("clients");
         const req = store.put(client);
         req.onsuccess = (e) => {
             if (!client.id) client.id = e.target.result;
-            // Aggiorna array in memoria
             const idx = appState.clients.findIndex(c => c.id === client.id);
             if (idx >= 0) appState.clients[idx] = client;
             else appState.clients.push(client);
+            // Sync cloud V2
+            cloudPostWithQueue({ event_type: "cliente_sync", ...client });
             resolve(client);
         };
         req.onerror = () => resolve(null);
@@ -440,16 +533,15 @@ const deleteClient = (id) => {
         const tx = db.transaction(["clients", "cessioni"], "readwrite");
         const clientsStore = tx.objectStore("clients");
         const cessioniStore = tx.objectStore("cessioni");
-
         clientsStore.delete(Number(id));
         appState.clients = appState.clients.filter(c => c.id !== Number(id));
-
-        // Rimuovi anche le cessioni associate
         const cessioniReq = cessioniStore.getAll();
         cessioniReq.onsuccess = () => {
             const toDelete = (cessioniReq.result || []).filter(c => c.cliente_id === Number(id));
             toDelete.forEach(c => cessioniStore.delete(c.id));
             appState.cessioni = appState.cessioni.filter(c => c.cliente_id !== Number(id));
+            // Sync cloud V2
+            cloudPostWithQueue({ event_type: "cliente_delete", id: Number(id) });
             resolve();
         };
     });
@@ -458,14 +550,16 @@ const deleteClient = (id) => {
 /**
  * Salva una nuova cessione in IndexedDB.
  */
-const saveCessione = (cessione) => {
+const saveCessione = async (cessione) => {
     return new Promise((resolve) => {
         const tx = db.transaction("cessioni", "readwrite");
         const store = tx.objectStore("cessioni");
         const req = store.add(cessione);
         req.onsuccess = (e) => {
             cessione.id = e.target.result;
-            appState.cessioni.unshift(cessione); // più recente in cima
+            appState.cessioni.unshift(cessione);
+            // Sync cloud V2
+            cloudPostWithQueue({ event_type: "cessione_sync", ...cessione });
             resolve(cessione);
         };
         req.onerror = () => resolve(null);
@@ -481,6 +575,8 @@ const deleteCessione = (id) => {
         const store = tx.objectStore("cessioni");
         store.delete(Number(id));
         appState.cessioni = appState.cessioni.filter(c => c.id !== Number(id));
+        // Sync cloud V2
+        cloudPostWithQueue({ event_type: "cessione_delete", id: Number(id) });
         resolve();
     });
 };
@@ -756,51 +852,42 @@ const updatePrezziPreview = () => {
 };
 
 const saveMeasurement = async (measurement) => {
-    // Save to Google Sheets
-    try {
-        const response = await fetch(GAS_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: {
-                "Content-Type": "text/plain;charset=utf-8"
-            },
-            body: JSON.stringify(measurement)
-        });
-
-        if (!response.ok) {
-            console.error(`Cloud save returned HTTP ${response.status}. Check GAS_URL and permissions.`);
-            if (response.status === 401 || response.status === 403) {
-                 showNotification("Errore Salvataggio Cloud", "Accesso negato. Dati salvati solo in locale.", "error");
-            }
-        } else {
-            const result = await response.json();
-            if (result && result.id) {
-                measurement.id = result.id;
-            }
-        }
-    } catch (e) {
-        console.error("Failed to save to Cloud:", e);
-        if (!navigator.onLine) {
-            showNotification("Offline", "Nessuna connessione a Internet. Dati salvati in locale.", "warning");
-        } else {
-            showNotification("Errore di Rete", "Impossibile contattare il server Cloud (errore di rete). Dati salvati in locale.", "warning");
-        }
-    }
-
-    // Still save locally
-    return new Promise((resolve) => {
+    if (!measurement.event_id) measurement.event_id = generateUUID();
+    const snapshotMeasurements = [...appState.measurements];
+    await new Promise((resolve) => {
         const tx = db.transaction("measurements", "readwrite");
         const store = tx.objectStore("measurements");
-
-        if (!measurement.id) measurement.id = new Date().getTime();
-
+        if (!measurement.id) measurement.id = Date.now();
         const req = store.put(measurement);
-        req.onsuccess = () => {
-            appState.measurements.push(measurement);
-            resolve(measurement);
-        };
+        req.onsuccess = () => resolve(measurement);
+        req.onerror  = () => resolve(null);
     });
+    const payload = {
+        event_id:            measurement.event_id,
+        event_type:          measurement.event_type || "pesata",
+        date:                measurement.date,
+        total_weight:        measurement.total_weight,
+        food_amount:         measurement.food_amount         || 0,
+        harvest_amount:      measurement.harvest_amount      || 0,
+        adult_ratio:         measurement.adult_ratio         || 0,
+        predicted_weight:    measurement.predicted_weight    || 0,
+        health_index:        measurement.health_index        || 100,
+        is_new_blood:        measurement.is_new_blood        || false,
+        notes:               measurement.notes               || "",
+        colony_id:           measurement.colony_id           || null,
+        colony_weight_after: (measurement.event_type === "prelievo" && measurement.colony_id)
+                                ? measurement.total_weight : undefined
+    };
+    cloudPostWithQueue(payload).then(result => {
+        if (!result.ok && !result.queued) {
+            appState.measurements = snapshotMeasurements;
+            updateUI();
+            showNotification("Errore Salvataggio Cloud", "Dati in locale. Ritenterà alla prossima connessione: " + result.error, "alert");
+        }
+    });
+    return measurement;
 };
+
 
 
 
@@ -2133,6 +2220,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         await initDB();
         updateUI();
+        // V2: flush offline queue al boot + avvio background sync
+        if (navigator.onLine) flushOfflineQueue();
+        startBackgroundSync();
     } catch (e) {
         console.error("Failed to initialize app data", e);
     }
@@ -2893,92 +2983,37 @@ const saveColony = (colony) => {
  * Sync colonia base data to Google Sheets 
  */
 const saveColonyToCloud = async (colony) => {
-    try {
-        const payload = {
-            event_type: 'colonia_sync',
-            date: colony.creation_date,
-            id: colony.id,
-            name: colony.name,
-            type: colony.type,
-            notes: colony.notes,
-            current_weight: colony.current_weight || 0,
-            males_count: colony.males_count || 0,
-            females_count: colony.females_count || 0,
-            subadults_count: colony.subadults_count || 0,
-            medium_count: colony.medium_count || 0,
-            small_count: colony.small_count || 0,
-            baby_count: colony.baby_count || 0
-        };
-        fetch(GAS_URL, {
-            method: 'POST',
-            redirect: 'follow',
-            headers: { "Content-Type": "text/plain;charset=utf-8" },
-            body: JSON.stringify(payload)
-        });
-    } catch (e) {
-        console.warn("Colony backup to cloud failed.", e);
-    }
+    // Usa cloudPostWithQueue per supportare offline queue e retry
+    const payload = {
+        event_type:       "colonia_sync",
+        id:               colony.id,
+        date:             colony.creation_date,
+        name:             colony.name,
+        type:             colony.type,
+        current_weight:   colony.current_weight   || 0,
+        males_count:      colony.males_count       || 0,
+        females_count:    colony.females_count     || 0,
+        subadults_count:  colony.subadults_count   || 0,
+        medium_count:     colony.medium_count      || 0,
+        small_count:      colony.small_count       || 0,
+        baby_count:       colony.baby_count        || 0,
+        notes:            colony.notes             || ""
+    };
+    cloudPostWithQueue(payload).catch(e =>
+        console.warn("[D.U.B.I.A.] saveColonyToCloud failed:", e.message)
+    );
 };
 
 /**
  * Sync colonie dal Cloud (Scarica il foglio Colonie e unisce i dati in IndexedDB)
  */
+/**
+ * syncColoniesFromCloud — mantenuta per compatibilità.
+ * La sincronizzazione avviene ora in loadInitialData via cloudGet parallelo.
+ */
 const syncColoniesFromCloud = async () => {
-    try {
-        if (!navigator.onLine) return;
-        
-        console.info("[D.U.B.I.A.] Sincronizzazione Colonie dal cloud...");
-        const response = await fetch(GAS_URL + "?sheet=Colonie", { redirect: "follow" });
-        if (!response.ok) return;
-        
-        const jsonResponse = await response.json();
-        const data = jsonResponse.data || jsonResponse;
-        
-        if (Array.isArray(data) && data.length > 0) {
-            // Poiché GAS fa solo appendRow, deduplichiamo per ID prendendo l'ultimo inserito
-            const coloniesMap = new Map();
-            data.forEach(c => {
-                if (c.id) coloniesMap.set(Number(c.id), c);
-            });
-            
-            const tx = db.transaction("colonies", "readwrite");
-            const store = tx.objectStore("colonies");
-            
-            coloniesMap.forEach((cloudColony, id) => {
-                // Costruisci oggetto colonia normalizzato
-                const mappedColony = {
-                    id: id,
-                    creation_date: cloudColony.date || cloudColony.creation_date || new Date().toISOString().split('T')[0],
-                    name: cloudColony.name || `Colonia ${id}`,
-                    type: cloudColony.type || 'Pasto',
-                    notes: cloudColony.notes || '',
-                    current_weight: parseFloat(cloudColony.current_weight) || parseFloat(cloudColony.total_weight) || 0,
-                    males_count: parseInt(cloudColony.males_count) || 0,
-                    females_count: parseInt(cloudColony.females_count) || 0,
-                    subadults_count: parseInt(cloudColony.subadults_count) || 0,
-                    medium_count: parseInt(cloudColony.medium_count) || 0,
-                    small_count: parseInt(cloudColony.small_count) || 0,
-                    baby_count: parseInt(cloudColony.baby_count) || 0
-                };
-                
-                // Salva o aggiorna in IndexedDB silenziosamente
-                store.put(mappedColony);
-                
-                // Aggiorna array in memoria (appState)
-                const idx = appState.colonies.findIndex(c => c.id === id);
-                if (idx >= 0) {
-                    appState.colonies[idx] = mappedColony;
-                } else {
-                    appState.colonies.push(mappedColony);
-                }
-            });
-            
-            console.info(`[D.U.B.I.A.] Sincronizzate ${coloniesMap.size} colonie dal cloud.`);
-            updateColoniesUI();
-        }
-    } catch (e) {
-        console.warn("Errore durante il download delle colonie dal cloud:", e);
-    }
+    // No-op: gestita da loadInitialData V2
+    console.info("[D.U.B.I.A.] syncColoniesFromCloud: handled by loadInitialData V2.");
 };
 
 /**
