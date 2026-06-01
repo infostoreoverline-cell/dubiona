@@ -105,8 +105,9 @@ window.addEventListener('online', () => { console.info('[D.U.B.I.A.] Online: flu
 
 let _backgroundSyncTimer = null;
 
-const mapTimelineData = (data) =>
-    data.map(m => ({
+const mapTimelineData = (data) => {
+    const seen = new Set();
+    return data.map(m => ({
         ...m,
         date:             m.date || null,
         total_weight:     parseFloat(m.total_weight)     || 0,
@@ -118,7 +119,18 @@ const mapTimelineData = (data) =>
         is_new_blood:     m.is_new_blood === 'true' || m.is_new_blood === true
     }))
     .filter(m => !!m.date)
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
+    .sort((a, b) => new Date(a.date) - new Date(b.date))
+    // De-duplica: per i record senza event_id (storici del vecchio sheet),
+    // tieni solo il primo per ogni coppia (data-ISO, total_weight).
+    // I record con event_id sono sempre tenuti anche se con stessa data.
+    .filter(m => {
+        if (m.event_id) return true; // record V2: sempre includi
+        const key = `${String(m.date).substring(0,10)}_${m.total_weight}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+};
 
 const startBackgroundSync = () => {
     if (_backgroundSyncTimer) return;
@@ -422,6 +434,8 @@ const loadInitialData = async () => {
                 const tx = db.transaction("colonies", "readwrite");
                 const store = tx.objectStore("colonies");
                 coloniesMap.forEach((c, id) => {
+                    // Normalizza is_deleted: stringa vuota e null → false
+                    const isDeleted = c.is_deleted === true || c.is_deleted === 'true' || c.is_deleted === 1;
                     const mapped = {
                         id, name: c.name || `Colonia ${id}`, type: c.type || "Pasto",
                         creation_date: c.date || c.creation_date || new Date().toISOString().split("T")[0],
@@ -429,7 +443,8 @@ const loadInitialData = async () => {
                         males_count: parseInt(c.males_count) || 0, females_count: parseInt(c.females_count) || 0,
                         subadults_count: parseInt(c.subadults_count) || 0, medium_count: parseInt(c.medium_count) || 0,
                         small_count: parseInt(c.small_count) || 0, baby_count: parseInt(c.baby_count) || 0,
-                        notes: c.notes || ""
+                        notes: c.notes || "",
+                        is_deleted: isDeleted  // ← Fix: era mancante, causava colonie zombie
                     };
                     store.put(mapped);
                     const idx = appState.colonies.findIndex(x => x.id === id);
@@ -1597,14 +1612,17 @@ const getEffectiveMass = (category) => {
  * @returns {{ weight: number, source: 'colonies'|'timeline' }}
  */
 const computeGlobalWeight = () => {
-    const activeCols = appState.colonies.filter(c => !c.is_deleted && (parseFloat(c.current_weight) || 0) > 0);
+    // Normalizza is_deleted: gestisce stringa vuota, null, undefined, 'true', true
+    const isDeletedNorm = (c) => c.is_deleted === true || c.is_deleted === 'true' || c.is_deleted === 1;
+    const activeCols = appState.colonies.filter(c => !isDeletedNorm(c) && (parseFloat(c.current_weight) || 0) > 0);
     if (activeCols.length > 0) {
         const total = activeCols.reduce((s, c) => s + (parseFloat(c.current_weight) || 0), 0);
         return { weight: Math.round(total * 10) / 10, source: 'colonies' };
     }
-    // Fallback: ultima misura in Timeline
-    if (appState.measurements.length > 0) {
-        const latest = appState.measurements[appState.measurements.length - 1];
+    // Fallback: ultima misura in Timeline (solo record pesata)
+    const pesate = (appState.measurements || []).filter(m => m.event_type === 'pesata' || !m.event_type);
+    if (pesate.length > 0) {
+        const latest = pesate[pesate.length - 1];
         return { weight: latest.total_weight, source: 'timeline' };
     }
     return { weight: 0, source: 'timeline' };
@@ -1616,7 +1634,8 @@ const computeGlobalWeight = () => {
  * @param {number} newTotal - Il nuovo peso globale misurato sulla bilancia
  */
 const distributeGlobalWeight = async (newTotal) => {
-    const activeCols = appState.colonies.filter(c => !c.is_deleted);
+    const isDeletedNorm = (c) => c.is_deleted === true || c.is_deleted === 'true' || c.is_deleted === 1;
+    const activeCols = appState.colonies.filter(c => !isDeletedNorm(c));
     if (activeCols.length === 0) return;
     const totalCurrent = activeCols.reduce((s, c) => s + (parseFloat(c.current_weight) || 0), 0);
     if (totalCurrent <= 0) {
@@ -3758,7 +3777,8 @@ const saveColonyToCloud = async (colony) => {
         medium_count:     colony.medium_count      || 0,
         small_count:      colony.small_count       || 0,
         baby_count:       colony.baby_count        || 0,
-        notes:            colony.notes             || ""
+        notes:            colony.notes             || "",
+        is_deleted:       colony.is_deleted        || false  // ← Fix: era mancante nel sync cloud
     };
     cloudPostWithQueue(payload).catch(e =>
         console.warn("[D.U.B.I.A.] saveColonyToCloud failed:", e.message)
