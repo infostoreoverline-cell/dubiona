@@ -1397,19 +1397,23 @@ const updateAlignmentStatus = () => {
                 
                 for (let colony of appState.colonies) {
                     let modified = false;
-                    categories.forEach(cat => {
-                        const empCount = divergence.empirical[cat.empKey];
-                        const theoCount = divergence.theoric[cat.theoKey];
-                        
-                        if (empCount > theoCount && empCount > 0) {
-                            const ratio = theoCount / empCount;
-                            const current = parseInt(colony[cat.prop]) || 0;
-                            if (current > 0) {
-                                colony[cat.prop] = Math.floor(current * ratio);
-                                modified = true;
+                    
+                    // Modifica SOLO le colonie destinate a 'Pasto'
+                    if (colony.type === 'Pasto') {
+                        categories.forEach(cat => {
+                            const empCount = divergence.empirical[cat.empKey];
+                            const theoCount = divergence.theoric[cat.theoKey];
+                            
+                            if (empCount > theoCount && empCount > 0) {
+                                const ratio = theoCount / empCount;
+                                const current = parseInt(colony[cat.prop]) || 0;
+                                if (current > 0) {
+                                    colony[cat.prop] = Math.floor(current * ratio);
+                                    modified = true;
+                                }
                             }
-                        }
-                    });
+                        });
+                    }
                     
                     if (modified) {
                         coloniesUpdated = true;
