@@ -19,7 +19,7 @@
  * ID del tuo Google Spreadsheet.
  * Ricavalo dall'URL: https://docs.google.com/spreadsheets/d/QUESTO_VALORE/edit
  */
-var SPREADSHEET_ID = '1mF5Ibp7ahdfIjywhi5_vsCTFI3PvA_luXm0RH8DvSYg';
+var SPREADSHEET_ID = '135VLAsiFTJtOHVJS1vglgX09XJbR7IQyR6HMixD8hQM';
 
 // ── Nomi dei fogli ─────────────────────────────────────────────
 var SHEET_NAMES = {
@@ -98,6 +98,7 @@ var VALID_EVENT_TYPES = {
   'prelievo':        'timeline',
   'calibrazione':    'timeline',
   'nuovo_sangue':    'timeline',
+  'transfer':        'timeline',   // Trasferimento biomassa tra colonie (tracciabilità)
   'colonia_sync':    'entity_upsert',
   'colonia_delete':  'entity_delete',
   'cliente_sync':    'entity_upsert',
@@ -910,7 +911,7 @@ function doPost(e) {
  * ID del VECCHIO foglio DUBIOZZA.
  * Ricavalo dall'URL del vecchio Google Sheet.
  */
-var OLD_SPREADSHEET_ID = '1mF5Ibp7ahdfIjywhi5_vsCTFI3PvA_luXm0RH8DvSYg';
+var OLD_SPREADSHEET_ID = '1mE5bpZaIhdFrjwhiJS_wsCfTEJ3PnAJuXm2RH80dSYg';
 
 /**
  * Mappa i nomi dei fogli del vecchio spreadsheet ai nomi V3.
@@ -986,11 +987,25 @@ function migrateFromV2() {
       var oldRow = oldData[r];
       var newRow = [];
       
+      // ── REGOLE DI TRASFORMAZIONE SPECIALI PER IL VECCHIO FOGLIO ──
+      // Nel vecchio DUBIOZZA, l'evento si chiamava "id" anziché "event_id"
+      if (newName === 'Timeline' && !oldRow.hasOwnProperty('event_id') && oldRow.hasOwnProperty('id')) {
+        oldRow['event_id'] = oldRow['id'];
+      }
+      // Nel vecchio DUBIOZZA non c'era "event_type", assumiamo siano tutte pesate
+      if (newName === 'Timeline' && !oldRow.hasOwnProperty('event_type') && oldRow.hasOwnProperty('total_weight')) {
+        oldRow['event_type'] = 'pesata';
+      }
+      // I vecchi dati non hanno "is_deleted"
+      if (!oldRow.hasOwnProperty('is_deleted')) {
+        oldRow['is_deleted'] = 'FALSE';
+      }
+      
       for (var c = 0; c < schema.length; c++) {
         var key = schema[c];
         var val = oldRow.hasOwnProperty(key) ? oldRow[key] : '';
         if (val === undefined || val === null) val = '';
-        newRow.push(val);
+        newRow.push(sanitizeValue(val));
       }
       
       newRows.push(newRow);

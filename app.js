@@ -9,7 +9,7 @@
  */
 
 // Constants & Configurations
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyU13M13vpRiINbqWTTevKFtKd0H45kkSSYOCDK2sjGc6Slzq73F7Cs7E6r7TZgAikI7g/exec";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzmrROPiLBIWt9qDsno9BKb_fWvPcmmH2xtp5UAHg4anQGOdd03U5IP6QjDnpsiB04NNA/exec";
 
 // ══════════════════════════════════════════════════════════════
 // CLOUD LAYER V2
@@ -190,7 +190,11 @@ let appState = {
     clients: [],
     cessioni: [],
     customPrices: { ...DEFAULT_PRICES },
-    colonies: []
+    colonies: [],
+    // Auto-Tuning: storico delle misurazioni di massa per categoria (media mobile 3x)
+    calibrationHistory: {},
+    // Auto-Tuning: costanti biologiche personalizzate (override di MASS)
+    customMass: {}
 };
 
 // --- DATABASE (IndexedDB) ---
@@ -1572,10 +1576,92 @@ const updateDoubleScenarioChart = (harvestAmount, simulatedFuture, days) => {
 
 // --- UI UPDATES ---
 
-const updateUI = () => {
-    if (appState.measurements.length === 0) return;
+/**
+ * Restituisce il peso effettivo per una categoria biologica.
+ * Usa customMass se l'utente ha calibrato la propria linea genetica,
+ * altrimenti usa le costanti standard MASS.
+ * @param {string} category - Es. 'FEMALE', 'MALE', ecc.
+ * @returns {number} Peso medio in grammi
+ */
+const getEffectiveMass = (category) => {
+    if (appState.customMass && appState.customMass[category] !== undefined) {
+        return appState.customMass[category];
+    }
+    return MASS[category] || 0;
+};
 
-    const latest = appState.measurements[appState.measurements.length - 1];
+/**
+ * BOTTOM-UP CENSUS — Peso globale come somma delle colonie fisiche.
+ * Se ci sono colonie con peso definito, usa quello come fonte di verità.
+ * Altrimenti fa fallback all'ultima misura globale in Timeline.
+ * @returns {{ weight: number, source: 'colonies'|'timeline' }}
+ */
+const computeGlobalWeight = () => {
+    const activeCols = appState.colonies.filter(c => !c.is_deleted && (parseFloat(c.current_weight) || 0) > 0);
+    if (activeCols.length > 0) {
+        const total = activeCols.reduce((s, c) => s + (parseFloat(c.current_weight) || 0), 0);
+        return { weight: Math.round(total * 10) / 10, source: 'colonies' };
+    }
+    // Fallback: ultima misura in Timeline
+    if (appState.measurements.length > 0) {
+        const latest = appState.measurements[appState.measurements.length - 1];
+        return { weight: latest.total_weight, source: 'timeline' };
+    }
+    return { weight: 0, source: 'timeline' };
+};
+
+/**
+ * Distribuisce un nuovo peso globale proporzionalmente tra le colonie attive.
+ * Usata quando si registra una pesata globale (senza colony_id specifico).
+ * @param {number} newTotal - Il nuovo peso globale misurato sulla bilancia
+ */
+const distributeGlobalWeight = async (newTotal) => {
+    const activeCols = appState.colonies.filter(c => !c.is_deleted);
+    if (activeCols.length === 0) return;
+    const totalCurrent = activeCols.reduce((s, c) => s + (parseFloat(c.current_weight) || 0), 0);
+    if (totalCurrent <= 0) {
+        // Se nessuna colonia ha peso, distribuisci equamente
+        const share = newTotal / activeCols.length;
+        for (const colony of activeCols) {
+            colony.current_weight = Math.round(share * 10) / 10;
+            await saveColony(colony);
+        }
+        return;
+    }
+    const ratio = newTotal / totalCurrent;
+    for (const colony of activeCols) {
+        colony.current_weight = Math.round((parseFloat(colony.current_weight) || 0) * ratio * 10) / 10;
+        await saveColony(colony);
+    }
+    console.info(`[D.U.B.I.A.] distributeGlobalWeight: ${newTotal}g distribuiti tra ${activeCols.length} colonie (ratio=${ratio.toFixed(3)})`);
+};
+
+const updateUI = () => {
+    // Usa il peso bottom-up se ci sono colonie, altrimenti fallback timeline
+    const globalWeightData = computeGlobalWeight();
+
+    if (globalWeightData.source === 'colonies') {
+        // Bottom-up: usa il peso somma delle colonie come base per tutti i calcoli
+        _updateUIWithWeight(globalWeightData.weight);
+    } else {
+        if (appState.measurements.length === 0) return;
+        _updateUIWithWeight(appState.measurements[appState.measurements.length - 1].total_weight);
+    }
+
+    // Data Decay: aggiorna widget affidabilità
+    if (typeof renderDataDecay === 'function') renderDataDecay();
+};
+
+const _updateUIWithWeight = (globalWeight) => {
+    if (globalWeight <= 0 && appState.measurements.length === 0) return;
+
+    // Usa l'ultima misura per i metadati (adultRatio, healthIndex ecc) ma il peso bottom-up
+    const latest = appState.measurements.length > 0
+        ? appState.measurements[appState.measurements.length - 1]
+        : { total_weight: globalWeight, adult_ratio: 0.35, health_index: 100 };
+
+    // Sovrascrive il peso con quello bottom-up (fondamenta)
+    const effectiveWeight = globalWeight > 0 ? globalWeight : latest.total_weight;
 
     // Future Prediction based on current slider
     const deltaGValue = parseInt(document.getElementById('deltaGSlider').value) || 30;
@@ -1583,15 +1669,11 @@ const updateUI = () => {
     // The prompt says: riproporzionando il numero stimato di individui in base alla crescita volumetrica attesa.
     // We will use the last adult ratio.
     const lastAdultRatio = latest.adult_ratio || 0.35;
-    // Assuming C_t = 0 for future pure growth, or last C_t? "riproporzionando il numero stimato... in base alla crescita volumetrica attesa alla fine dei giorni selezionati."
-    // We'll use the deltaG to calculate the future pred.
-    // W_t+1 = W_t + (theta1 * 0) + (theta2 * W_t * (1 - A_t) * (delta_g / 30))
-    // To match the prompt: "Questo input deve sovrascrivere dinamicamente la variabile \Delta g nell'equazione di stato del Modulo 1"
-    const futurePred = calculatePrediction(latest.total_weight, 0, lastAdultRatio, deltaGValue, appState.params);
+    const futurePred = calculatePrediction(effectiveWeight, 0, lastAdultRatio, deltaGValue, appState.params);
 
-    // Dashboard
-    document.getElementById('realWeightValue').innerText = `${latest.total_weight.toFixed(1)} g`;
-    document.getElementById('predWeightValue').innerText = `${futurePred.toFixed(1)} g`; // Show future pred instead of past? Or past predicted? The prompt says "La card del Peso Teorico Predetto". Let's show future pred.
+    // Dashboard — usa effectiveWeight (bottom-up se ci sono colonie)
+    document.getElementById('realWeightValue').innerText = `${effectiveWeight.toFixed(1)} g`;
+    document.getElementById('predWeightValue').innerText = `${futurePred.toFixed(1)} g`;
 
     document.getElementById('theta1Value').innerText = appState.params.theta1.toFixed(4);
     document.getElementById('theta2Value').innerText = appState.params.theta2.toFixed(4);
@@ -1647,7 +1729,7 @@ const updateUI = () => {
     // calculateColonyMetrics() NON legge il DOM, NON usa window.innerWidth.
     // I dati derivati (fCount, mCount, ecc.) vengono SEMPRE da questa funzione.
     const metrics = calculateColonyMetrics(
-        latest.total_weight,
+        effectiveWeight,
         lastAdultRatio,
         appState.params
     );
@@ -1803,6 +1885,30 @@ const updateUI = () => {
             } else {
                 suggesterText.innerText = `Colonia ben bilanciata. Prelievo generico raccomandato per mantenere stabile la piramide demografica.`;
             }
+
+            // Insights Prescrittivi Fase 4
+            if (typeof generatePrescriptiveInsights === 'function') {
+                const insights = generatePrescriptiveInsights(metrics);
+                let insightsDiv = document.getElementById('prescriptiveInsights');
+                if (!insightsDiv && suggesterText.parentElement) {
+                    insightsDiv = document.createElement('div');
+                    insightsDiv.id = 'prescriptiveInsights';
+                    suggesterText.parentElement.appendChild(insightsDiv);
+                }
+                if (insightsDiv) {
+                    if (insights.length > 0) {
+                        insightsDiv.style.display = 'block';
+                        insightsDiv.innerHTML = insights.map(ins => {
+                            const borderColor = ins.priority === 'high' ? 'var(--alert-red)' : ins.priority === 'medium' ? '#F2C94C' : 'var(--accent-green)';
+                            const bgAlpha = ins.priority === 'high' ? '192,41,43' : ins.priority === 'medium' ? '242,201,76' : '39,174,96';
+                            return `<div style="display:flex;gap:0.5rem;align-items:flex-start;padding:0.5rem 0.75rem;margin-top:0.5rem;background:rgba(${bgAlpha},0.08);border-left:3px solid ${borderColor};border-radius:6px;font-size:0.82rem;"><span>${ins.icon}</span><span>${ins.text}</span></div>`;
+                        }).join('');
+                    } else {
+                        insightsDiv.style.display = 'none';
+                        insightsDiv.innerHTML = '';
+                    }
+                }
+            }
         }
 
         setTimeout(() => updateHarvest(), 0);
@@ -1838,13 +1944,8 @@ const updateUI = () => {
         maturationText.innerText = metrics.maturMessage;
     }
 
-    // ── Barre di avanzamento piramide ────────────────────────────────────────
-    document.getElementById('barFemale').style.width = `${(fCount/totalCount)*100 * 3}%`; // Multiplier for visual effect
-    document.getElementById('barMale').style.width = `${(mCount/totalCount)*100 * 3}%`;
-    document.getElementById('barSubAdult').style.width = `${(saCount/totalCount)*100 * 3}%`;
-    document.getElementById('barMedium').style.width = `${(medCount/totalCount)*100 * 3}%`;
-    document.getElementById('barSmall').style.width = `${(smCount/totalCount)*100 * 3}%`;
-    document.getElementById('barBaby').style.width = `${(bCount/totalCount)*100 * 3}%`;
+    // ── Piramide Demografica Bilaterale (Age-Structure Pyramid) ─────────────
+    renderAgePyramid(metrics);
 
     // Update Census Chart (Modulo 4 — 4 stadi D.U.B.I.A., dati da metrics centralizzate)
     const ctxCensus = document.getElementById('censusChart');
@@ -1992,12 +2093,136 @@ const updateUI = () => {
             const deltaOverPred = curr.total_weight - (curr.predicted_weight || curr.total_weight);
             const maxExtra = census.N_femmine * 0.4;
             const pregnantPct = maxExtra > 0 ? Math.min(100, Math.max(0, (deltaOverPred / maxExtra) * 100)) : 0;
-            const pregnantEl = document.getElementById('pregnantRatioValue');
+                const pregnantEl = document.getElementById('pregnantRatioValue');
             if (pregnantEl) pregnantEl.innerText = `${pregnantPct.toFixed(1)} %`;
         }
     }
 
+    renderAgePyramid(metrics);
+    renderDataDecay();
+
     updateCharts();
+};
+
+// ══════════════════════════════════════════════════════
+// FASE 2A — PIRAMIDE DEMOGRAFICA BILATERALE
+// ══════════════════════════════════════════════════════
+
+/**
+ * Renderizza la Piramide Demografica Age-Structure bilaterale.
+ * Maschi a sinistra (blu), Femmine a destra (viola).
+ * Include Bottleneck Detector: se uno stadio ha < 10% del precedente → avviso arancione.
+ * @param {object} metrics - Oggetto da calculateColonyMetrics()
+ */
+const renderAgePyramid = (metrics) => {
+    const pyramid = document.getElementById('agePyramid');
+    if (!pyramid) return;
+
+    const { fCount, mCount, saCount, medCount, smCount, bCount } = metrics;
+
+    // Dati per ogni stadio: [stadioLabel, maschi, femmine, coloreM, coloreF]
+    // Per gli stadi neanidi: i maschi sono 0 (non distinguibili visivamente fino all'adulto)
+    // ma includiamo la proporzione teorica 23/77 anche alle neanidi per coerenza
+    const stages = [
+        { label: 'Femmine Adulte', subLabel: '2.5g', males: 0,       females: fCount,  colorM: '#3498db', colorF: '#9b59b6', femaleOnly: true  },
+        { label: 'Maschi Adulti',  subLabel: '1.5g', males: mCount,  females: 0,       colorM: '#3498db', colorF: '#9b59b6', maleOnly: true   },
+        { label: 'Sub-Adulte',     subLabel: '1.6g', males: Math.round(saCount * 0.23), females: Math.round(saCount * 0.77), colorM: '#2980b9', colorF: '#8e44ad' },
+        { label: 'Neanidi Medie',  subLabel: '0.8g', males: Math.round(medCount * 0.23), females: Math.round(medCount * 0.77), colorM: '#1abc9c', colorF: '#27ae60' },
+        { label: 'N. Piccole',     subLabel: '0.3g', males: Math.round(smCount * 0.23),  females: Math.round(smCount * 0.77),  colorM: '#16a085', colorF: '#1e8449' },
+        { label: 'Micro-Neanidi',  subLabel: '0.1g', males: Math.round(bCount * 0.23),   females: Math.round(bCount * 0.77),   colorM: '#f39c12', colorF: '#e67e22' }
+    ];
+
+    const allTotals = stages.map(s => s.males + s.females);
+    const maxTotal = Math.max(...allTotals, 1);
+
+    // Bottleneck: se uno stadio ha < 10% del totale dello stadio precedente
+    const bottleneckFlags = allTotals.map((t, i) => {
+        if (i === 0) return false;
+        return t > 0 && allTotals[i - 1] > 0 && t < allTotals[i - 1] * 0.10;
+    });
+
+    pyramid.innerHTML = stages.map((s, i) => {
+        const total = s.males + s.females;
+        const maxPct = 100; // Max percentage of the bar side
+        const malePct  = maxTotal > 0 ? (s.males  / maxTotal) * maxPct : 0;
+        const femPct   = maxTotal > 0 ? (s.females / maxTotal) * maxPct : 0;
+        const isBottleneck = bottleneckFlags[i];
+        const rowClass = isBottleneck ? 'pyramid-row bottleneck' : 'pyramid-row';
+        const bottleneckBadge = isBottleneck ? `<span class="bottleneck-badge">⚠️ Strozzatura</span>` : '';
+
+        return `
+        <div class="${rowClass}">
+            <div class="pyramid-bar-container left">
+                <div class="pyramid-bar-fill" style="width: ${malePct.toFixed(1)}%; background: ${s.colorM};">
+                    ${s.males > 0 ? `<span class="bar-count">${s.males}</span>` : ''}
+                </div>
+            </div>
+            <div class="pyramid-label">
+                <span class="stage-name">${s.label}</span>
+                <span class="stage-sub">${s.subLabel}</span>
+                ${bottleneckBadge}
+            </div>
+            <div class="pyramid-bar-container right">
+                <div class="pyramid-bar-fill" style="width: ${femPct.toFixed(1)}%; background: ${s.colorF};">
+                    ${s.females > 0 ? `<span class="bar-count">${s.females}</span>` : ''}
+                </div>
+            </div>
+        </div>
+        `;
+    }).join('');
+};
+
+// ══════════════════════════════════════════════════════
+// FASE 2B — DATA DECAY (Indice Affidabilità del Dato)
+// ══════════════════════════════════════════════════════
+
+/**
+ * Renderizza il widget "Indice di Affidabilità del Dato" nella sezione Census.
+ * La precisione scende del 2%/giorno dall'ultima pesata.
+ * Verde >= 70%, Giallo 40-69%, Rosso < 40%.
+ */
+const renderDataDecay = () => {
+    const widget = document.getElementById('dataDecayWidget');
+    if (!widget) return;
+
+    if (appState.measurements.length === 0) {
+        widget.innerHTML = `
+            <div class="decay-bar-wrapper">
+                <span class="decay-label">Nessuna pesata registrata</span>
+            </div>`;
+        return;
+    }
+
+    // Trova l'ultima pesata (o calibrazione)
+    const lastMeas = [...appState.measurements]
+        .filter(m => m.event_type === 'pesata' || m.event_type === 'calibrazione')
+        .sort((a, b) => new Date(b.date) - new Date(a.date))[0]
+        || appState.measurements[appState.measurements.length - 1];
+
+    const daysSince = (Date.now() - new Date(lastMeas.date).getTime()) / 86400000;
+    const reliability = Math.max(0, Math.min(100, 100 - daysSince * 2));
+    const daysToUnreliable = Math.max(0, Math.ceil((reliability - 30) / 2));
+
+    let colorClass = 'decay-green';
+    let icon = '🟢';
+    let statusLabel = 'Dati Affidabili';
+    if (reliability < 40) { colorClass = 'decay-red'; icon = '🔴'; statusLabel = 'Dati Inaffidabili'; }
+    else if (reliability < 70) { colorClass = 'decay-yellow'; icon = '🟡'; statusLabel = 'Precisione in Calo'; }
+
+    const daysText = reliability < 30
+        ? `⚠️ Dati scaduti da ${Math.floor(daysSince - 35)} giorni — <strong>pesare subito!</strong>`
+        : `I dati diventeranno inaffidabili tra <strong>${daysToUnreliable} giorni</strong>`;
+
+    widget.innerHTML = `
+        <div class="decay-header">
+            <span>${icon} Affidabilità Dati: <strong class="${colorClass}">${reliability.toFixed(0)}%</strong></span>
+            <span class="decay-last">Ultima pesata: ${Math.floor(daysSince)} giorni fa</span>
+        </div>
+        <div class="decay-bar-track">
+            <div class="decay-bar-fill ${colorClass}" style="width: ${reliability.toFixed(0)}%;"></div>
+        </div>
+        <div class="decay-info">${daysText}</div>
+    `;
 };
 
 const updateCharts = () => {
@@ -2534,7 +2759,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                 await processNewMeasurement(date, newGlobalWeight, foodAmount, adultRatio, globalNotes, harvestAmount, false, true, eventType);
             }
         } else {
-            // Globale standard
+            // Pesata Globale: distribuisce proporzionalmente tra le colonie attive
+            if (eventType === 'pesata' && weight > 0 && appState.colonies.filter(c => !c.is_deleted).length > 0) {
+                await distributeGlobalWeight(weight);
+                console.info(`[D.U.B.I.A.] Pesata globale ${weight}g distribuita proporzionalmente.`);
+            }
+            // ━━ RICONCILIAZIONE: controlla delta > 5% per pesate ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            if (eventType === 'pesata' && appState.measurements.length > 0) {
+                const lastM = appState.measurements[appState.measurements.length - 1];
+                const predicted = lastM.predicted_weight || lastM.total_weight;
+                const pendingFn = async () => {
+                    await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false, true, eventType);
+                };
+                const intercepted = checkReconciliationTrigger(weight, predicted, pendingFn);
+                if (intercepted) {
+                    // Sospeso: il modal di riconciliazione gestirà il salvataggio
+                    modal.classList.remove('active');
+                    form.reset();
+                    document.getElementById('inputDate').valueAsDate = new Date();
+                    return;
+                }
+            }
             await processNewMeasurement(date, weight, foodAmount, adultRatio, notes, harvestAmount, false, true, eventType);
         }
         
@@ -2984,11 +3229,462 @@ const showNotification = (title, message, type = "success") => {
     
     area.appendChild(notif);
     
-    notif.querySelector('.notification-close').addEventListener('click', () => notif.remove());
+notif.querySelector('.notification-close').addEventListener('click', () => notif.remove());
     
     setTimeout(() => {
         if(notif.parentElement) notif.remove();
     }, 5000);
+};
+
+// ══════════════════════════════════════════════════════
+// FASE 3A — TRASFERIMENTI TRA COLONIE
+// ══════════════════════════════════════════════════════
+
+// Stato interno: tiene la colonia di partenza per il modal
+let _transferSourceColonyId = null;
+
+/**
+ * Apre il modal di trasferimento pre-compilando la colonia sorgente.
+ * @param {number|null} fromColonyId - ID della colonia sorgente (opzionale)
+ */
+const openTransferModal = (fromColonyId = null) => {
+    _transferSourceColonyId = fromColonyId;
+    const modal = document.getElementById('transferModal');
+    if (!modal) return;
+
+    const fromSelect = document.getElementById('transferFrom');
+    const toSelect   = document.getElementById('transferTo');
+    if (!fromSelect || !toSelect) return;
+
+    const options = appState.colonies
+        .filter(c => !c.is_deleted)
+        .map(c => `<option value="${c.id}">${c.name} (${(parseFloat(c.current_weight)||0).toFixed(1)}g)</option>`)
+        .join('');
+
+    fromSelect.innerHTML = options;
+    toSelect.innerHTML   = options;
+
+    // Pre-seleziona la colonia sorgente se passata
+    if (fromColonyId) {
+        fromSelect.value = String(fromColonyId);
+        // Seleziona la prima colonia diversa per la destinazione
+        const otherColony = appState.colonies.find(c => !c.is_deleted && c.id !== fromColonyId);
+        if (otherColony) toSelect.value = String(otherColony.id);
+    }
+
+    updateTransferPreview();
+    modal.classList.add('active');
+};
+
+/**
+ * Aggiorna l'anteprima live del trasferimento nel modal.
+ */
+const updateTransferPreview = () => {
+    const amount   = parseFloat(document.getElementById('transferAmount')?.value) || 0;
+    const fromId   = Number(document.getElementById('transferFrom')?.value);
+    const toId     = Number(document.getElementById('transferTo')?.value);
+    const fromCol  = appState.colonies.find(c => c.id === fromId);
+    const toCol    = appState.colonies.find(c => c.id === toId);
+
+    if (!fromCol || !toCol) return;
+
+    const fromAfter = Math.max(0, (parseFloat(fromCol.current_weight)||0) - amount);
+    const toAfter   = (parseFloat(toCol.current_weight)||0) + amount;
+
+    document.getElementById('transferFromName').textContent = fromCol.name;
+    document.getElementById('transferToName').textContent   = toCol.name;
+    document.getElementById('transferFromAfter').textContent = `${fromAfter.toFixed(1)} g`;
+    document.getElementById('transferToAfter').textContent   = `${toAfter.toFixed(1)} g`;
+    document.getElementById('transferFromAfter').style.color  = fromAfter < 10 ? 'var(--alert-red)' : 'var(--accent-green)';
+};
+
+/**
+ * Esegue il trasferimento: aggiorna i pesi e crea 2 eventi Timeline di tipo 'transfer'.
+ */
+const handleTransfer = async () => {
+    const amount    = parseFloat(document.getElementById('transferAmount')?.value) || 0;
+    const category  = document.getElementById('transferCategory')?.value || 'ALL';
+    const fromId    = Number(document.getElementById('transferFrom')?.value);
+    const toId      = Number(document.getElementById('transferTo')?.value);
+
+    if (amount <= 0) { showNotification('Errore', 'Inserisci una quantità valida.', 'alert'); return; }
+    if (fromId === toId) { showNotification('Errore', 'Le colonie sorgente e destinazione devono essere diverse.', 'alert'); return; }
+
+    const fromCol = appState.colonies.find(c => c.id === fromId);
+    const toCol   = appState.colonies.find(c => c.id === toId);
+    if (!fromCol || !toCol) { showNotification('Errore', 'Colonia non trovata.', 'alert'); return; }
+
+    if ((parseFloat(fromCol.current_weight)||0) < amount) {
+        showNotification('Errore', `La colonia "${fromCol.name}" non ha abbastanza biomassa (${fromCol.current_weight}g disponibili).`, 'alert');
+        return;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    const catLabel = category === 'ALL' ? 'mix' : category;
+
+    // 1. Aggiorna i pesi
+    fromCol.current_weight = Math.max(0, (parseFloat(fromCol.current_weight)||0) - amount);
+    toCol.current_weight   = (parseFloat(toCol.current_weight)||0) + amount;
+
+    await saveColony(fromCol);
+    await saveColony(toCol);
+
+    // 2. Crea evento Timeline per la sorgente (trasferimento OUT)
+    const eventFrom = {
+        event_id: generateUUID(),
+        event_type: 'transfer',
+        date: today,
+        total_weight: 0,
+        colony_id: fromCol.id,
+        colony_weight_after: fromCol.current_weight,
+        notes: `[TRANSFER OUT] ${amount}g [${catLabel}] → ${toCol.name}`,
+        adult_ratio: 0,
+        food_amount: 0,
+        harvest_amount: amount,
+        health_index: 100,
+        predicted_weight: 0
+    };
+
+    // 3. Crea evento Timeline per la destinazione (trasferimento IN)
+    const eventTo = {
+        event_id: generateUUID(),
+        event_type: 'transfer',
+        date: today,
+        total_weight: 0,
+        colony_id: toCol.id,
+        colony_weight_after: toCol.current_weight,
+        notes: `[TRANSFER IN] +${amount}g [${catLabel}] ← ${fromCol.name}`,
+        adult_ratio: 0,
+        food_amount: 0,
+        harvest_amount: 0,
+        health_index: 100,
+        predicted_weight: 0
+    };
+
+    await saveMeasurement(eventFrom);
+    await saveMeasurement(eventTo);
+
+    // 4. Chiudi modal e aggiorna UI
+    document.getElementById('transferModal').classList.remove('active');
+    updateColoniesUI();
+    updateUI();
+    showNotification('Trasferimento Completato', `${amount}g spostati da "${fromCol.name}" a "${toCol.name}". Timeline aggiornata.`, 'success');
+};
+
+// Attacca i listener al modal Trasferimento
+document.addEventListener('DOMContentLoaded', () => {
+    const btnCancel  = document.getElementById('btnTransferCancel');
+    const btnConfirm = document.getElementById('btnTransferConfirm');
+    const fromSel    = document.getElementById('transferFrom');
+    const toSel      = document.getElementById('transferTo');
+    const amountInp  = document.getElementById('transferAmount');
+
+    if (btnCancel)  btnCancel.addEventListener('click', () => document.getElementById('transferModal').classList.remove('active'));
+    if (btnConfirm) btnConfirm.addEventListener('click', handleTransfer);
+    if (fromSel)    fromSel.addEventListener('change', updateTransferPreview);
+    if (toSel)      toSel.addEventListener('change', updateTransferPreview);
+    if (amountInp)  amountInp.addEventListener('input', updateTransferPreview);
+
+    // Bottone Trasferisci nel dettaglio colonia
+    const btnDetailTransfer = document.getElementById('btnDetailTransfer');
+    if (btnDetailTransfer) {
+        btnDetailTransfer.addEventListener('click', () => {
+            const detailCard = document.getElementById('colonyDetailCard');
+            const nameEl = document.getElementById('detailColonyName');
+            if (detailCard && detailCard.style.display !== 'none' && nameEl) {
+                const activeColony = appState.colonies.find(c => c.name === nameEl.textContent);
+                openTransferModal(activeColony ? activeColony.id : null);
+            } else {
+                openTransferModal();
+            }
+        });
+    }
+});
+
+// ══════════════════════════════════════════════════════
+// FASE 3B — CONSOLE DI RICONCILIAZIONE
+// ══════════════════════════════════════════════════════
+
+// Closure per tenere il contesto dell'operazione di riconciliazione
+let _pendingReconciliation = null;
+
+/**
+ * Controlla se la nuova pesata diverge > 5% dalla previsione.
+ * Se sì, apre il modal di riconciliazione invece di salvare subito.
+ * @returns {boolean} true se il modal è stato aperto (l'operazione è sospesa)
+ */
+const checkReconciliationTrigger = (realWeight, predictedWeight, pendingFn) => {
+    if (!predictedWeight || predictedWeight <= 0) return false;
+    const delta = realWeight - predictedWeight;
+    const deltaPct = Math.abs(delta / predictedWeight) * 100;
+
+    if (deltaPct < 5) return false; // Scarto accettabile, procedi normalmente
+
+    // Apri il modal di riconciliazione
+    _pendingReconciliation = pendingFn;
+
+    const modal = document.getElementById('reconciliationModal');
+    if (!modal) return false;
+
+    document.getElementById('reconEstimated').textContent = `${predictedWeight.toFixed(1)} g`;
+    document.getElementById('reconReal').textContent      = `${realWeight.toFixed(1)} g`;
+    document.getElementById('reconDeltaVal').textContent  = `${delta > 0 ? '+' : ''}${delta.toFixed(1)} g`;
+    document.getElementById('reconDeltaPct').textContent  = `${deltaPct.toFixed(1)}%`;
+    document.getElementById('reconDeltaVal').style.color  = delta < 0 ? 'var(--alert-red)' : 'var(--accent-green)';
+
+    modal.classList.add('active');
+    return true; // Operazione sospesa in attesa della scelta utente
+};
+
+/**
+ * Applica la correzione scelta dall'utente nella console di riconciliazione.
+ * @param {string} reason - 'mortality' | 'unrecorded_harvest' | 'cold_food' | 'error'
+ */
+const applyReconciliationChoice = async (reason, realWeight, predictedWeight) => {
+    const delta = realWeight - predictedWeight;
+
+    if (reason === 'error') {
+        // ANNULLA: non salvare il dato sbagliato
+        document.getElementById('reconciliationModal').classList.remove('active');
+        _pendingReconciliation = null;
+        showNotification('Operazione Annullata', 'La pesata errata non è stata salvata. Ripesa la scatola e reinserisci il dato.', 'warning');
+        return;
+    }
+
+    if (reason === 'mortality') {
+        // Aumenta il tasso di mortalità fisiologica
+        const mortalityInput = document.getElementById('inputMortality');
+        const currentMort = parseFloat(mortalityInput?.value) || 1.5;
+        const newMort = Math.min(10, currentMort + 0.5);
+        if (mortalityInput) mortalityInput.value = newMort.toFixed(1);
+        appState.params.mortalityRate = newMort;
+        saveParams(appState.params);
+        showNotification('Modello Aggiornato', `Tasso mortalità aumentato a ${newMort.toFixed(1)}%. Pesata salvata.`, 'success');
+    } else if (reason === 'unrecorded_harvest') {
+        // Crea un evento prelievo storico per la differenza
+        const harvestAmount = Math.abs(delta);
+        const today = new Date().toISOString().split('T')[0];
+        const eventHarvest = {
+            event_id: generateUUID(),
+            event_type: 'prelievo',
+            date: today,
+            total_weight: realWeight,
+            colony_id: null,
+            notes: '[AUTO] Prelievo non registrato — rilevato da Riconciliazione',
+            adult_ratio: 0.35,
+            food_amount: 0,
+            harvest_amount: harvestAmount,
+            health_index: appState.params ? computeHealthIndex(appState.params.theta1) : 100,
+            predicted_weight: predictedWeight
+        };
+        await saveMeasurement(eventHarvest);
+        showNotification('Prelievo Registrato', `Aggiunto prelievo implicito di ${harvestAmount.toFixed(1)}g. Pesata salvata.`, 'success');
+    } else if (reason === 'cold_food') {
+        // Abbassa theta1 e theta2 del 5% — backpropagazione manuale
+        appState.params.theta1 = Math.max(0.001, appState.params.theta1 * 0.95);
+        appState.params.theta2 = Math.max(0.001, appState.params.theta2 * 0.95);
+        saveParams(appState.params);
+        showNotification('Modello Ricalibrato', `θ₁ e θ₂ ridotti del 5% per riflettere lo stress ambientale. Pesata salvata.`, 'success');
+    }
+
+    // Chiudi modal ed esegui la pesata pendente
+    document.getElementById('reconciliationModal').classList.remove('active');
+    if (_pendingReconciliation) {
+        await _pendingReconciliation();
+        _pendingReconciliation = null;
+    }
+    updateUI();
+};
+
+// Attacca i listener ai bottoni di riconciliazione
+document.addEventListener('DOMContentLoaded', () => {
+    const grid = document.querySelector('.recon-reason-grid');
+    if (grid) {
+        grid.addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-reason]');
+            if (!btn) return;
+            const reason = btn.getAttribute('data-reason');
+            const estimatedEl = document.getElementById('reconEstimated');
+            const realEl = document.getElementById('reconReal');
+            const est = parseFloat(estimatedEl?.textContent) || 0;
+            const real = parseFloat(realEl?.textContent) || 0;
+            await applyReconciliationChoice(reason, real, est);
+        });
+    }
+});
+
+// ══════════════════════════════════════════════════════
+// FASE 4A — AUTO-TUNING COSTANTI BIOLOGICHE
+// ══════════════════════════════════════════════════════
+
+/**
+ * Controlla se una calibrazione suggerisce di aggiornare la costante biologica.
+ * Aggiorna solo dopo 3 calibrazioni consecutive con la stessa deviazione (> 10%).
+ * @param {string} category - 'FEMALE' | 'MALE' | 'SUBADULT' | 'MEDIUM' | 'SMALL' | 'BABY'
+ * @param {number} realCount - Numero di individui contati fisicamente
+ * @param {number} realWeight - Peso totale di quella categoria misurato
+ */
+const checkAutoTuningOpportunity = (category, realCount, realWeight) => {
+    if (!realCount || realCount <= 0 || !realWeight || realWeight <= 0) return;
+
+    const measuredMass = realWeight / realCount;
+    const standardMass = getEffectiveMass(category);
+    const deviation = Math.abs(measuredMass - standardMass) / standardMass;
+
+    if (deviation < 0.10) return; // Deviazione < 10%: nessuna azione
+
+    // Aggiungi alla storia
+    if (!appState.calibrationHistory[category]) appState.calibrationHistory[category] = [];
+    appState.calibrationHistory[category].push({ mass: measuredMass, date: new Date().toISOString().split('T')[0] });
+
+    // Mantieni solo gli ultimi 10 dati
+    if (appState.calibrationHistory[category].length > 10) {
+        appState.calibrationHistory[category] = appState.calibrationHistory[category].slice(-10);
+    }
+
+    // Controlla se le ultime 3 calibrazioni mostrano TUTTE la stessa deviazione > 10%
+    const history = appState.calibrationHistory[category].slice(-3);
+    if (history.length < 3) return; // Non abbastanza dati
+
+    const consistentDeviation = history.every(h => {
+        const dev = Math.abs(h.mass - standardMass) / standardMass;
+        return dev > 0.10;
+    });
+    if (!consistentDeviation) return;
+
+    const avgMass = history.reduce((s, h) => s + h.mass, 0) / history.length;
+    const catLabels = { FEMALE: 'Femmine Adulte', MALE: 'Maschi Adulti', SUBADULT: 'Sub-Adulte', MEDIUM: 'Neanidi Medie', SMALL: 'Neanidi Piccole', BABY: 'Micro-Neanidi' };
+
+    // Mostra toast di suggerimento
+    suggestMassUpdate(category, avgMass, catLabels[category] || category);
+};
+
+/**
+ * Mostra un toast non invasivo per suggerire l'aggiornamento della costante biologica.
+ */
+const suggestMassUpdate = (category, avgMass, catLabel) => {
+    const standardMass = MASS[category] || 0;
+    const toast = document.createElement('div');
+    toast.className = 'notification';
+    toast.style.cssText = 'border-left-color: #f39c12; cursor: default;';
+    toast.innerHTML = `
+        <div class="notification-content">
+            <strong>🧬 Auto-Tuning Disponibile</strong>
+            <p>${catLabel} nel tuo allevamento pesano mediamente <strong>${avgMass.toFixed(2)}g</strong> invece di ${standardMass}g standard.<br>
+            <span style="color:#f39c12;">Aggiornare il modello per questo allevamento?</span></p>
+            <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+                <button onclick="applyMassUpdate('${category}', ${avgMass})" style="padding:0.3rem 0.7rem; border-radius:6px; border:none; background:var(--accent-green); color:white; font-size:0.8rem; cursor:pointer; font-weight:600;">Aggiorna (${avgMass.toFixed(2)}g)</button>
+                <button onclick="this.closest('.notification').remove()" style="padding:0.3rem 0.7rem; border-radius:6px; border:1px solid var(--border-color); background:transparent; color:var(--text-muted); font-size:0.8rem; cursor:pointer;">Ignora</button>
+            </div>
+        </div>
+    `;
+    const area = document.getElementById('notificationArea');
+    if (area) area.appendChild(toast);
+    // Non auto-rimuovere: l'utente deve scegliere
+};
+
+/**
+ * Applica l'aggiornamento della costante biologica (chiamato dal toast).
+ */
+window.applyMassUpdate = (category, newMass) => {
+    if (!appState.customMass) appState.customMass = {};
+    appState.customMass[category] = newMass;
+
+    // Resetta la storia per questa categoria
+    if (appState.calibrationHistory[category]) {
+        appState.calibrationHistory[category] = [];
+    }
+
+    // Persisti in localStorage (leggero, non IndexedDB)
+    try {
+        localStorage.setItem('dubia_customMass', JSON.stringify(appState.customMass));
+    } catch(e) {}
+
+    updateUI();
+    // Rimuovi tutti i toast auto-tuning aperti
+    document.querySelectorAll('.notification').forEach(n => {
+        if (n.querySelector('strong')?.textContent.includes('Auto-Tuning')) n.remove();
+    });
+    showNotification('Modello Aggiornato', `La costante per ${category} aggiornata a ${newMass.toFixed(2)}g. Tutti i calcoli futuri useranno questo valore.`, 'success');
+};
+
+// Carica customMass salvato da localStorage all'avvio
+try {
+    const savedMass = localStorage.getItem('dubia_customMass');
+    if (savedMass) appState.customMass = JSON.parse(savedMass);
+} catch(e) {}
+
+// ══════════════════════════════════════════════════════
+// FASE 4B — SUGGERITORE PRESCRITTIVO AVANZATO
+// ══════════════════════════════════════════════════════
+
+/**
+ * Genera un array di insights prescrittivi basati sullo stato demografico corrente.
+ * @param {object} metrics - Oggetto da calculateColonyMetrics()
+ * @returns {Array<{icon:string, text:string, priority:'high'|'medium'|'low'}>}
+ */
+const generatePrescriptiveInsights = (metrics) => {
+    const insights = [];
+    const { fCount, mCount, saCount, medCount, smCount, bCount, totalCount, H_live } = metrics;
+
+    if (fCount <= 0) return insights;
+
+    const ratio = mCount / fCount;
+    const subadultFraction = saCount / Math.max(totalCount, 1);
+    const babyFraction = (bCount * getEffectiveMass('BABY') + smCount * getEffectiveMass('SMALL'))
+        / Math.max(metrics.census?.W_neanidi || 1, 1);
+    const msy30g = calculatePrediction(computeGlobalWeight().weight, 0, 0.35, 30, appState.params)
+        - computeGlobalWeight().weight;
+
+    // Regola 1: Eccesso di maschi
+    if (ratio > 0.4) {
+        const surplusMales = Math.round(mCount - fCount * 0.3);
+        const surplusGrams = (surplusMales * getEffectiveMass('MALE')).toFixed(1);
+        insights.push({
+            icon: '⚖️',
+            text: `Rapporto ♂/♀ = ${ratio.toFixed(2)} — troppo alto. Preleva ~${surplusGrams}g di maschi adulti (~${surplusMales} individui) per portare il ratio verso 1:3 e migliorare l'FCR.`,
+            priority: 'high'
+        });
+    }
+
+    // Regola 2: Strozzatura sub-adulte
+    if (saCount < totalCount * 0.05 && totalCount > 50) {
+        insights.push({
+            icon: '⚠️',
+            text: `Collo di bottiglia: le Sub-Adulte sono solo ${saCount} (${(subadultFraction*100).toFixed(0)}%). Tra 30-45 giorni mancheranno adulti per rimpiazzare i prelievi. Blocca i prelievi per questo ciclo.`,
+            priority: 'high'
+        });
+    }
+
+    // Regola 3: Alta produzione baby
+    if (babyFraction > 0.5 && bCount > 100) {
+        const expectedSurplusWeeks = 6;
+        insights.push({
+            icon: '📊',
+            text: `Alta densità di baby/piccole (${(babyFraction*100).toFixed(0)}% della biomassa neonati). Prevedi un surplus di prelievo tra ${expectedSurplusWeeks} settimane. Pianifica cessioni ora.`,
+            priority: 'medium'
+        });
+    }
+
+    // Regola 4: Indice di salute critico
+    if (H_live < 75) {
+        insights.push({
+            icon: '🧬',
+            text: `Indice H = ${H_live.toFixed(1)}% — CRITICO. Rischio inbreeding sistemico o senescenza genetica. Introduci nuovo ceppo genetico immediatamente.`,
+            priority: 'high'
+        });
+    }
+
+    // Regola 5: MSY positivo (buona crescita, suggerisci prelievo)
+    if (msy30g > 50 && ratio <= 0.4) {
+        insights.push({
+            icon: '✂️',
+            text: `La colonia è in crescita sostenuta. Puoi prelevare fino a ${msy30g.toFixed(0)}g nei prossimi 30 giorni senza rischi (MSY). Priorizza maschi adulti o sub-adulte.`,
+            priority: 'low'
+        });
+    }
+
+    return insights;
 };
 
 if (typeof module !== 'undefined' && module.exports) {

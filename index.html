@@ -248,54 +248,37 @@
                 <div style="position: relative; width: 100%; height: 300px; overflow: visible; margin-bottom: 1rem;">
                     <canvas id="censusChart" style="max-width:100%; box-sizing:border-box;"></canvas>
                 </div>
+                <div id="dataDecayWidget" class="data-decay-widget">
+                    <div class="decay-header">
+                        <span>🟡 Affidabilità Dati: <strong class="decay-yellow">--</strong></span>
+                        <span class="decay-last">--</span>
+                    </div>
+                    <div class="decay-bar-track"><div class="decay-bar-fill decay-yellow" style="width:50%"></div></div>
+                    <div class="decay-info">In attesa di dati...</div>
+                </div>
+
                 <div id="maturationTimerCard" style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--accent-purple); display: none;">
                     ⏱️ <strong>Timer di Maturazione:</strong> <span id="maturationTimerText">...</span>
                 </div>
 
-                <div class="pyramid-container">
-                    <div class="pyramid-level adult-female">
-                        <div class="level-info">
-                            <span class="level-name">Femmine Adulte (2.5g)</span>
-                            <span class="level-count" id="countFemale">--</span>
-                        </div>
-                        <div class="progress-bar"><div class="fill" id="barFemale" style="width: 0%"></div></div>
-                    </div>
-                    <div class="pyramid-level adult-male">
-                        <div class="level-info">
-                            <span class="level-name">Maschi Adulti (1.5g)</span>
-                            <span class="level-count" id="countMale">--</span>
-                        </div>
-                        <div class="progress-bar"><div class="fill" id="barMale" style="width: 0%"></div></div>
-                    </div>
-                    <div class="pyramid-level sub-adult">
-                        <div class="level-info">
-                            <span class="level-name">Sub-Adulte (1.6g)</span>
-                            <span class="level-count" id="countSubAdult">--</span>
-                        </div>
-                        <div class="progress-bar"><div class="fill" id="barSubAdult" style="width: 0%"></div></div>
-                    </div>
-                    <div class="pyramid-level nymph-medium">
-                        <div class="level-info">
-                            <span class="level-name">Neanidi Medie (0.8g)</span>
-                            <span class="level-count" id="countMedium">--</span>
-                        </div>
-                        <div class="progress-bar"><div class="fill" id="barMedium" style="width: 0%"></div></div>
-                    </div>
-                    <div class="pyramid-level nymph-small">
-                        <div class="level-info">
-                            <span class="level-name">Neanidi Piccole (0.3g)</span>
-                            <span class="level-count" id="countSmall">--</span>
-                        </div>
-                        <div class="progress-bar"><div class="fill" id="barSmall" style="width: 0%"></div></div>
-                    </div>
-                    <div class="pyramid-level baby">
-                        <div class="level-info">
-                            <span class="level-name">Micro-Neanidi (0.1g)</span>
-                            <span class="level-count" id="countBaby">--</span>
-                        </div>
-                        <div class="progress-bar"><div class="fill" id="barBaby" style="width: 0%"></div></div>
+
+                <!-- Intestazione Piramide -->
+                <div class="pyramid-header">
+                    <span class="pyramid-header-left">♂ MASCHI</span>
+                    <span class="pyramid-header-center">Stadio Vitale</span>
+                    <span class="pyramid-header-right">FEMMINE ♀</span>
+                </div>
+
+                <!-- Piramide Bilaterale Age-Structure -->
+                <div id="agePyramid" class="age-pyramid">
+                    <!-- Generato dinamicamente da renderAgePyramid() -->
+                    <div class="pyramid-row" style="opacity:0.4;">
+                        <div class="pyramid-bar-container left"><div class="pyramid-bar-fill" style="width:40%;background:#3498db;"></div></div>
+                        <div class="pyramid-label"><span class="stage-name">In attesa...</span></div>
+                        <div class="pyramid-bar-container right"><div class="pyramid-bar-fill" style="width:40%;background:#9b59b6;"></div></div>
                     </div>
                 </div>
+
             </div>
 
             <!-- Extra space at the bottom of the Census tab -->
@@ -545,6 +528,7 @@
 
                 <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                     <button class="btn-standard btn-primary" id="btnDetailAddMeasure" style="flex: 1; white-space: nowrap;">+ Aggiungi Pesata/Dati</button>
+                    <button class="btn-standard" id="btnDetailTransfer" style="white-space: nowrap; background-color: var(--accent-purple);">↔️ Trasferisci</button>
                     <button class="btn-standard" id="btnDetailShowQR" style="white-space: nowrap;">Mostra QR</button>
                     <button class="btn-standard btn-danger" id="btnDetailDelete" style="white-space: nowrap;">Elimina</button>
                 </div>
@@ -642,7 +626,90 @@
     <!-- FLOATING ACTION BUTTON -->
     <button class="fab" id="fabAdd" title="Aggiungi Pesata">+</button>
 
-    <!-- MODAL FOR NEW ENTRY -->
+    <!-- MODAL TRASFERIMENTO BIOMASSA -->
+    <div class="modal-overlay" id="transferModal">
+        <div class="modal modal-wide">
+            <h2 style="color: var(--accent-purple);">↔️ Trasferisci Biomassa</h2>
+            <p class="subtitle-text" style="margin-bottom: 1rem;">Sposta biomassa tra due colonie senza alterare il totale globale. L'evento verrà tracciato in Timeline.</p>
+            <div class="form-group">
+                <label for="transferAmount">Quantità da spostare (grammi)</label>
+                <input type="number" id="transferAmount" class="input-standard" min="1" step="1" value="50">
+            </div>
+            <div class="form-group">
+                <label for="transferCategory">Categoria</label>
+                <select id="transferCategory" class="input-standard">
+                    <option value="ALL">Generica (mix)</option>
+                    <option value="FEMALE">Femmine Adulte (2.5g)</option>
+                    <option value="MALE">Maschi Adulti (1.5g)</option>
+                    <option value="SUBADULT">Sub-Adulte (1.6g)</option>
+                    <option value="MEDIUM">Neanidi Medie (0.8g)</option>
+                    <option value="SMALL">Neanidi Piccole (0.3g)</option>
+                    <option value="BABY">Micro-Neanidi (0.1g)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="transferFrom">DA (Colonia Sorgente)</label>
+                <select id="transferFrom" class="input-standard"></select>
+            </div>
+            <div class="form-group">
+                <label for="transferTo">A (Colonia Destinazione)</label>
+                <select id="transferTo" class="input-standard"></select>
+            </div>
+            <!-- Preview antepriama -->
+            <div class="transfer-preview" id="transferPreview">
+                <strong style="font-size:0.8rem; color: var(--text-muted);">Anteprima dopo il trasferimento:</strong>
+                <div class="arrow-row">
+                    <div class="t-colony">
+                        <strong id="transferFromName">DA</strong>
+                        <span id="transferFromAfter">-- g</span>
+                    </div>
+                    <div class="t-arrow">→</div>
+                    <div class="t-colony">
+                        <strong id="transferToName">A</strong>
+                        <span id="transferToAfter">-- g</span>
+                    </div>
+                </div>
+                <p style="font-size:0.75rem; text-align:center; margin-top:0.5rem; color:var(--accent-green);" id="transferGlobalNote">Totale globale: invariato</p>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn-standard btn-cancel" id="btnTransferCancel">Annulla</button>
+                <button type="button" class="btn-standard btn-primary" id="btnTransferConfirm" style="background-color: var(--accent-purple);">Conferma Trasferimento</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL RICONCILIAZIONE SPLIT-SCREEN -->
+    <div class="modal-overlay" id="reconciliationModal">
+        <div class="modal modal-wide">
+            <h2 style="color: var(--alert-red); font-size: 1.1rem;">⚠️ Discrepanza Rilevata</h2>
+            <p class="subtitle-text" style="margin-bottom: 0.75rem;">Il peso reale inserito differisce significativamente dalla previsione algoritmica. Seleziona la causa più probabile.</p>
+            <div class="recon-split">
+                <div class="recon-panel estimated">
+                    <div class="recon-panel-label">🔵 Stima Algoritmica</div>
+                    <div class="recon-panel-weight" id="reconEstimated">-- g</div>
+                    <div style="font-size:0.78rem; color:var(--text-muted);">basata su θ₁, θ₂</div>
+                </div>
+                <div class="recon-delta-center">
+                    <div class="recon-delta-value" id="reconDeltaVal">--</div>
+                    <div class="recon-delta-pct" id="reconDeltaPct">--</div>
+                </div>
+                <div class="recon-panel real">
+                    <div class="recon-panel-label">🟢 Peso Reale</div>
+                    <div class="recon-panel-weight" id="reconReal">-- g</div>
+                    <div style="font-size:0.78rem; color:var(--text-muted);">misurato sulla bilancia</div>
+                </div>
+            </div>
+            <p style="font-size:0.875rem; font-weight:600; margin-bottom: 0.5rem;">Perché c'è questa discrepanza?</p>
+            <div class="recon-reason-grid">
+                <button class="recon-reason-btn" data-reason="mortality">💀 Mortalità Alta<br><small>Aumento tasso di mortalità</small></button>
+                <button class="recon-reason-btn" data-reason="unrecorded_harvest">✂️ Prelievo Non Registrato<br><small>Aggiungo evento prelievo</small></button>
+                <button class="recon-reason-btn" data-reason="cold_food">❄️ Freddo / Alimentazione<br><small>Ricalibra θ₁ e θ₂</small></button>
+                <button class="recon-reason-btn danger" data-reason="error">❌ Errore di Pesata<br><small>ANNULLA — non salvare</small></button>
+            </div>
+        </div>
+    </div>
+
+
     <div class="modal-overlay" id="entryModal">
         <div class="modal">
             <h2>Nuovo Evento</h2>

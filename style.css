@@ -1397,3 +1397,327 @@ button, input[type="text"], input[type="number"], input[type="date"], select, te
     .clienti-stat-card .value { font-size: 1.3rem; }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   D.U.B.I.A. V4 — Piramide Demografica Bilaterale
+   ═══════════════════════════════════════════════════════════ */
+
+.pyramid-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.pyramid-header-left {
+    text-align: right;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #3498db;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+.pyramid-header-center {
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+    padding: 0 0.5rem;
+}
+.pyramid-header-right {
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #9b59b6;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.age-pyramid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 0.5rem;
+}
+
+.pyramid-row {
+    display: grid;
+    grid-template-columns: 1fr 120px 1fr;
+    gap: 6px;
+    align-items: center;
+    padding: 4px 6px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    transition: border-color 0.3s ease;
+}
+
+.pyramid-row.bottleneck {
+    border-color: #f39c12;
+    background: rgba(243, 156, 18, 0.06);
+    animation: bottleneckPulse 2s ease-in-out infinite;
+}
+
+@keyframes bottleneckPulse {
+    0%, 100% { background: rgba(243, 156, 18, 0.06); }
+    50%       { background: rgba(243, 156, 18, 0.12); }
+}
+
+.pyramid-bar-container {
+    display: flex;
+    height: 26px;
+    align-items: center;
+    overflow: hidden;
+    position: relative;
+}
+
+.pyramid-bar-container.left {
+    justify-content: flex-end;
+}
+
+.pyramid-bar-container.right {
+    justify-content: flex-start;
+}
+
+.pyramid-bar-fill {
+    height: 22px;
+    border-radius: 4px;
+    transition: width 0.7s cubic-bezier(0.4,0,0.2,1);
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    min-width: 2px;
+    position: relative;
+}
+
+.bar-count {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: rgba(255,255,255,0.9);
+    padding: 0 4px;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.pyramid-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1px;
+    padding: 0 4px;
+}
+
+.stage-name {
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+}
+
+.stage-sub {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+}
+
+.bottleneck-badge {
+    font-size: 0.6rem;
+    color: #f39c12;
+    font-weight: 700;
+    display: block;
+    margin-top: 2px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   D.U.B.I.A. V4 — Data Decay Widget
+   ═══════════════════════════════════════════════════════════ */
+
+.data-decay-widget {
+    background: rgba(0,0,0,0.2);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.875rem 1rem;
+    margin-bottom: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.decay-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.decay-last {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.decay-bar-track {
+    height: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 0.4rem;
+}
+
+.decay-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.8s ease, background-color 0.3s ease;
+}
+
+.decay-green { color: var(--accent-green); background: var(--accent-green); }
+.decay-yellow { color: #F2C94C; background: #F2C94C; }
+.decay-red { color: var(--alert-red); background: var(--alert-red); }
+
+.decay-info {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin: 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   D.U.B.I.A. V4 — Transfer Modal
+   ═══════════════════════════════════════════════════════════ */
+
+.modal-wide {
+    max-width: 520px;
+}
+
+.transfer-preview {
+    background: rgba(39, 174, 96, 0.08);
+    border: 1px solid rgba(39, 174, 96, 0.25);
+    border-radius: 8px;
+    padding: 0.875rem;
+    margin: 0.75rem 0;
+    font-size: 0.875rem;
+}
+
+.transfer-preview .arrow-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0.5rem;
+    align-items: center;
+    text-align: center;
+    margin-top: 0.5rem;
+}
+
+.transfer-preview .t-colony {
+    padding: 0.5rem;
+    background: rgba(0,0,0,0.2);
+    border-radius: 6px;
+}
+
+.transfer-preview .t-colony strong { display: block; font-size: 0.8rem; color: var(--text-muted); }
+.transfer-preview .t-colony span { font-size: 1rem; font-weight: 700; }
+.transfer-preview .t-arrow { font-size: 1.5rem; color: var(--accent-purple); }
+
+/* ═══════════════════════════════════════════════════════════
+   D.U.B.I.A. V4 — Reconciliation Modal (Split Screen)
+   ═══════════════════════════════════════════════════════════ */
+
+.recon-split {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 1rem;
+    margin: 1rem 0;
+    align-items: start;
+}
+
+.recon-panel {
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+}
+
+.recon-panel.estimated {
+    background: rgba(52, 152, 219, 0.1);
+    border: 1px solid rgba(52, 152, 219, 0.3);
+}
+
+.recon-panel.real {
+    background: rgba(39, 174, 96, 0.1);
+    border: 1px solid rgba(39, 174, 96, 0.3);
+}
+
+.recon-panel-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+}
+
+.recon-panel-weight {
+    font-size: 1.6rem;
+    font-weight: 800;
+    margin-bottom: 0.25rem;
+}
+
+.recon-panel.estimated .recon-panel-weight { color: #3498db; }
+.recon-panel.real .recon-panel-weight { color: var(--accent-green); }
+
+.recon-delta-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem;
+    gap: 4px;
+}
+
+.recon-delta-value {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--alert-red);
+}
+
+.recon-delta-pct {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.recon-reason-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    margin: 1rem 0;
+}
+
+.recon-reason-btn {
+    padding: 0.75rem 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: rgba(255,255,255,0.05);
+    color: var(--text-main);
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: center;
+    line-height: 1.4;
+}
+
+.recon-reason-btn:hover {
+    border-color: var(--accent-purple);
+    background: rgba(142, 68, 173, 0.15);
+}
+
+.recon-reason-btn.danger {
+    border-color: rgba(192, 41, 43, 0.4);
+    color: var(--alert-red);
+}
+
+.recon-reason-btn.danger:hover {
+    background: rgba(192, 41, 43, 0.1);
+}
+
+@media screen and (max-width: 480px) {
+    .recon-split { grid-template-columns: 1fr; }
+    .recon-delta-center { flex-direction: row; }
+    .pyramid-row { grid-template-columns: 1fr 90px 1fr; }
+    .stage-name { font-size: 0.65rem; }
+}
