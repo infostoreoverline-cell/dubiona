@@ -1382,12 +1382,49 @@ const updateAlignmentStatus = () => {
         const btnReset = document.getElementById('btnResetCalibrations');
         if (btnReset) {
             btnReset.style.display = 'block';
-            btnReset.onclick = () => {
+            btnReset.onclick = async () => {
                 delete appState.params.manualCalibrations;
                 saveParams(appState.params);
-                updateUI();
+                
+                let coloniesUpdated = false;
+                
+                const categories = [
+                    { prop: 'females_count', empKey: 'females', theoKey: 'N_femmine' },
+                    { prop: 'males_count', empKey: 'males', theoKey: 'N_maschi' },
+                    { prop: 'medium_count', empKey: 'medium', theoKey: 'N_medie' },
+                    { prop: 'baby_count', empKey: 'baby', theoKey: 'N_baby' }
+                ];
+                
+                for (let colony of appState.colonies) {
+                    let modified = false;
+                    categories.forEach(cat => {
+                        const empCount = divergence.empirical[cat.empKey];
+                        const theoCount = divergence.theoric[cat.theoKey];
+                        
+                        if (empCount > theoCount && empCount > 0) {
+                            const ratio = theoCount / empCount;
+                            const current = parseInt(colony[cat.prop]) || 0;
+                            if (current > 0) {
+                                colony[cat.prop] = Math.floor(current * ratio);
+                                modified = true;
+                            }
+                        }
+                    });
+                    
+                    if (modified) {
+                        coloniesUpdated = true;
+                        await saveColony(colony); // Salva in locale + cloud in background
+                    }
+                }
+                
                 updateColoniesUI();
-                showNotification('Reset Completato', 'Le calibrazioni manuali sono state rimosse. Il censimento è tornato in modalità puro Modulo 4.', 'success');
+                updateUI();
+                
+                if (coloniesUpdated) {
+                    showNotification('Riallineamento Completato', 'Le colonie in eccesso sono state ridotte per rientrare nei parametri teorici globali.', 'success');
+                } else {
+                    showNotification('Reset Completato', 'Le calibrazioni manuali sono state rimosse.', 'success');
+                }
             };
         }
     } else if (divergence.hasConflict) {
