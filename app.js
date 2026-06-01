@@ -1107,31 +1107,52 @@ const calculateColonyMetrics = (W_t, A_t, params) => {
         censusData.sex_ratio        = censusData.N_femmine > 0 ? censusData.N_maschi / censusData.N_femmine : 0;
     }
 
-    // Applica calibrazioni manuali se presenti (sovrascrivono il Modulo 4 sia localmente che nel censusData ritornato)
+    // ── GESTIONE CALIBRAZIONI A CASCATA (Richiesta Utente) ─────────────
+    // Le variabili calibrate manualmente NON devono cambiare.
+    // Le altre variabili scalano proporzionalmente per rispettare il peso W_t.
     const calibs = (params && params.manualCalibrations) || {};
-    let fCount   = calibs['FEMALE']   !== undefined ? calibs['FEMALE']   : censusData.N_femmine;
-    let mCount   = calibs['MALE']     !== undefined ? calibs['MALE']     : censusData.N_maschi;
-    let saCount  = calibs['SUBADULT'] !== undefined ? calibs['SUBADULT'] : 0;
-    let medCount = calibs['MEDIUM']   !== undefined ? calibs['MEDIUM']   : censusData.N_medie;
-    let smCount  = calibs['SMALL']    !== undefined ? calibs['SMALL']    : 0;
-    let bCount   = calibs['BABY']     !== undefined ? calibs['BABY']     : censusData.N_baby;
-    
-    // FAILSAFE: Evita la "Biomassa Fantasma". Se le calibrazioni pesano più della bilancia, ignorale.
-    const calibratedWeight = (fCount * MASS.FEMALE) + (mCount * MASS.MALE) + (saCount * MASS.SUBADULT) + (medCount * MASS.MEDIUM) + (smCount * MASS.SMALL) + (bCount * MASS.BABY);
-    let isManualOverrideActive = false;
-    
-    if (Object.keys(calibs).length > 0) {
-        if (calibratedWeight > W_t) {
-            console.warn(`Ghost Biomass Failsafe: Peso calibrato (${calibratedWeight}g) > Bilancia (${W_t}g). Calibrazioni ignorate.`);
-            fCount = censusData.N_femmine;
-            mCount = censusData.N_maschi;
-            saCount = 0;
-            medCount = censusData.N_medie;
-            smCount = 0;
-            bCount = censusData.N_baby;
-        } else {
-            isManualOverrideActive = true;
-        }
+    let isManualOverrideActive = Object.keys(calibs).length > 0;
+
+    let fCount, mCount, saCount, medCount, smCount, bCount;
+
+    if (!isManualOverrideActive) {
+        fCount   = censusData.N_femmine;
+        mCount   = censusData.N_maschi;
+        saCount  = 0;
+        medCount = censusData.N_medie;
+        smCount  = 0;
+        bCount   = censusData.N_baby;
+    } else {
+        // 1. Calcola il peso delle categorie esplicitamente calibrate
+        let calibratedWeight = 0;
+        if (calibs["FEMALE"]   !== undefined) calibratedWeight += calibs["FEMALE"]   * MASS.FEMALE;
+        if (calibs["MALE"]     !== undefined) calibratedWeight += calibs["MALE"]     * MASS.MALE;
+        if (calibs["SUBADULT"] !== undefined) calibratedWeight += calibs["SUBADULT"] * MASS.SUBADULT;
+        if (calibs["MEDIUM"]   !== undefined) calibratedWeight += calibs["MEDIUM"]   * MASS.MEDIUM;
+        if (calibs["SMALL"]    !== undefined) calibratedWeight += calibs["SMALL"]    * MASS.SMALL;
+        if (calibs["BABY"]     !== undefined) calibratedWeight += calibs["BABY"]     * MASS.BABY;
+
+        // 2. Calcola il peso residuo per le categorie NON calibrate
+        let remainingWeight = W_t - calibratedWeight;
+        if (remainingWeight < 0) remainingWeight = 0;
+
+        // 3. Calcola il peso teorico delle categorie NON calibrate per distribuirvi il residuo
+        let uncalibratedTheoWeight = 0;
+        if (calibs["FEMALE"] === undefined) uncalibratedTheoWeight += censusData.N_femmine * MASS.FEMALE;
+        if (calibs["MALE"]   === undefined) uncalibratedTheoWeight += censusData.N_maschi  * MASS.MALE;
+        if (calibs["MEDIUM"] === undefined) uncalibratedTheoWeight += censusData.N_medie   * MASS.MEDIUM;
+        if (calibs["BABY"]   === undefined) uncalibratedTheoWeight += censusData.N_baby    * MASS.BABY;
+
+        // Fattore di scala a cascata
+        let scaleFactor = uncalibratedTheoWeight > 0 ? (remainingWeight / uncalibratedTheoWeight) : 0;
+
+        // 4. Applica: i calibrati restano fissi, gli altri scalano a cascata
+        fCount   = calibs["FEMALE"]   !== undefined ? calibs["FEMALE"]   : Math.round(censusData.N_femmine * scaleFactor);
+        mCount   = calibs["MALE"]     !== undefined ? calibs["MALE"]     : Math.round(censusData.N_maschi  * scaleFactor);
+        saCount  = calibs["SUBADULT"] !== undefined ? calibs["SUBADULT"] : 0;
+        medCount = calibs["MEDIUM"]   !== undefined ? calibs["MEDIUM"]   : Math.round(censusData.N_medie   * scaleFactor);
+        smCount  = calibs["SMALL"]    !== undefined ? calibs["SMALL"]    : 0;
+        bCount   = calibs["BABY"]     !== undefined ? calibs["BABY"]     : Math.round(censusData.N_baby    * scaleFactor);
     }
 
     const totalCount = fCount + mCount + saCount + medCount + smCount + bCount;
