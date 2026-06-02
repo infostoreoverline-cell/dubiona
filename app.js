@@ -1852,9 +1852,8 @@ const _updateUIWithWeight = (globalWeight) => {
 
             const remainingWeight = Math.max(0, currentWeight - totalSimulatedHarvest);
             const simulatedFuture = calculatePrediction(remainingWeight, 0, simulatedAdultRatio, days, appState.params);
-
-            document.getElementById('harvestFutureWeight').innerText = `${simulatedFuture.toFixed(1)} g`;
-
+            const hfw = document.getElementById('harvestFutureWeight');
+            if (hfw) hfw.innerText = `${simulatedFuture.toFixed(1)} g`;
             // MSY Warning: Se il peso futuro è inferiore al peso corrente prima del prelievo, la colonia è in declino
             if (simulatedFuture < currentWeight && totalSimulatedHarvest > 0) {
                 if (msyWarning) msyWarning.style.display = 'block';
@@ -1933,12 +1932,13 @@ const _updateUIWithWeight = (globalWeight) => {
         setTimeout(() => updateHarvest(), 0);
     }
 
-    document.getElementById('countFemale').innerText = fCount;
-    document.getElementById('countMale').innerText = mCount;
-    document.getElementById('countSubAdult').innerText = saCount;
-    document.getElementById('countMedium').innerText = medCount;
-    document.getElementById('countSmall').innerText = smCount;
-    document.getElementById('countBaby').innerText = bCount;
+    const setSafeInner = (id, val) => { const el = document.getElementById(id); if(el) el.innerText = val; };
+    setSafeInner('smartCountFemale', fCount);
+    setSafeInner('smartCountMale', mCount);
+    setSafeInner('smartCountSubAdult', saCount);
+    setSafeInner('smartCountMedium', medCount);
+    setSafeInner('smartCountSmall', smCount);
+    setSafeInner('smartCountBaby', bCount);
 
     // Bottleneck detection
     const alarmCard = document.getElementById('demographicAlarmCard');
