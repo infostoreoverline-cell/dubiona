@@ -2749,11 +2749,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (colonyId) {
             const colony = appState.colonies.find(c => c.id === colonyId);
             if (colony) {
-                let oldWeight = colony.current_weight || 0;
-                let deltaWeight = 0;
+                const oldWeight = colony.current_weight || 0;
                 
                 if (eventType === 'pesata') {
-                    deltaWeight = weight - oldWeight;
                     colony.current_weight = weight;
                 } else if (eventType === 'prelievo') {
                     colony.current_weight = Math.max(0, oldWeight - harvestAmount);
@@ -2763,15 +2761,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 await saveColony(colony);
                 
-                // INVECE della somma, applichiamo il DELTA (differenza) al peso globale per non sovrascrivere le blatte non assegnate.
-                let globalOldWeight = appState.measurements.length > 0 ? appState.measurements[appState.measurements.length - 1].total_weight : 0;
-                let newGlobalWeight = globalOldWeight;
-                
-                if (eventType === 'pesata') {
-                    newGlobalWeight = Math.max(0, globalOldWeight + deltaWeight);
-                } else if (eventType === 'prelievo') {
-                    newGlobalWeight = Math.max(0, globalOldWeight - harvestAmount);
-                } // Per il cibo ci pensa già processNewMeasurement
+                // Usa computeGlobalWeight() come fonte di verità: somma REALE di tutte le
+                // colonie dopo l'aggiornamento. Questo evita la deriva tra Timeline e colonie
+                // che si accumulava usando l'approccio delta (globalOldWeight + deltaWeight).
+                const newGlobalWeight = computeGlobalWeight().weight;
                 
                 const globalNotes = `[${colony.name}] ${notes}`;
                 // Registra l'evento a livello globale con il nuovo peso calcolato
