@@ -952,7 +952,7 @@ const computeHealthIndex = (theta1) => {
     return (theta1 / 0.30) * 100; // fallback
 };
 
-const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount = 0, isNewBlood = false, isManualSubmit = false, eventType = 'pesata') => {
+const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount = 0, isNewBlood = false, isManualSubmit = false, eventType = 'pesata', colonyId = null, colonyWeightAfter = null) => {
     const lastMeasurement = appState.measurements.length > 0 
         ? appState.measurements[appState.measurements.length - 1] 
         : null;
@@ -1036,7 +1036,9 @@ const processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, n
         notes,
         predicted_weight: predictedWeight,
         health_index: healthIndex,
-        event_type: eventType
+        event_type: eventType,
+        colony_id: colonyId,
+        colony_weight_after: colonyWeightAfter
     };
 
     await saveMeasurement(measurement);
@@ -2245,14 +2247,31 @@ const renderDataDecay = () => {
 };
 
 const updateCharts = () => {
-    const labels = appState.measurements.map(m => m.date.substring(5)); // Show MM-DD
-    const realData = appState.measurements.map(m => m.total_weight);
-    const predData = appState.measurements.map(m => m.predicted_weight);
-    const healthData = appState.measurements.map(m => m.health_index);
-    const notesData = appState.measurements.map(m => m.notes || '');
+    // 1) Raggruppa le misurazioni per giorno
+    const dailyMap = new Map();
+    appState.measurements.forEach(m => {
+        const dStr = m.date.substring(0, 10);
+        dailyMap.set(dStr, m); // Sovrascrive per tenere l'ultimo dato di ogni giorno
+    });
 
-    if (appState.measurements.length > 0) {
-        const latest = appState.measurements[appState.measurements.length - 1];
+    const uniqueMeasurements = Array.from(dailyMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // 2) Estrai etichette e dati
+    const labels = uniqueMeasurements.map(m => {
+        const dStr = m.date.substring(0, 10);
+        const parts = dStr.split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`; // DD/MM/YYYY
+        }
+        return dStr;
+    });
+
+    const realData = uniqueMeasurements.map(m => m.total_weight);
+    const predData = uniqueMeasurements.map(m => m.predicted_weight);
+    const notesData = uniqueMeasurements.map(m => m.notes || '');
+
+    if (uniqueMeasurements.length > 0) {
+        const latest = uniqueMeasurements[uniqueMeasurements.length - 1];
         const deltaGValue = parseInt(document.getElementById('deltaGSlider').value) || 30;
         const lastAdultRatio = latest.adult_ratio || 0.35;
         const futurePred = calculatePrediction(latest.total_weight, 0, lastAdultRatio, deltaGValue, appState.params);
@@ -2260,9 +2279,11 @@ const updateCharts = () => {
         // Add future projected point
         const futureDate = new Date(latest.date);
         futureDate.setDate(futureDate.getDate() + deltaGValue);
-        const futureDateStr = futureDate.toISOString().split('T')[0].substring(5);
+        const futureDateStr = futureDate.toISOString().split('T')[0];
+        const fParts = futureDateStr.split('-');
+        const fFormatted = fParts.length === 3 ? `${fParts[2]}/${fParts[1]}/${fParts[0]}` : futureDateStr;
 
-        labels.push(futureDateStr + ' (Proj)');
+        labels.push(fFormatted + ' (Proj)');
         realData.push(null); // No real data for future
         predData.push(futurePred);
         notesData.push('Proiezione Futura');
@@ -2337,12 +2358,9 @@ const updateCharts = () => {
     });
 
     // Health Chart
-    // healthData usa l'H ricalcolato come (θ₁/θ₁*)×100 per ogni snapshot.
-    // Per record storici che avevano H calcolato con la vecchia formula (reale/pred),
-    // usiamo l'H live corrente per l'ultimo punto e i valori storici per i precedenti.
-    const healthDataCorrected = appState.measurements.map((m, i) => {
+    const healthDataCorrected = uniqueMeasurements.map((m, i) => {
         // Se è l'ultimo record, usa l'H live calcolato dai parametri aggiornati
-        if (i === appState.measurements.length - 1) {
+        if (i === uniqueMeasurements.length - 1) {
             return computeHealthIndex(appState.params.theta1);
         }
         // Per record storici, l'H salvato potrebbe essere la vecchia formula;
@@ -2759,6 +2777,29 @@ document.addEventListener('DOMContentLoaded', async () => {
                     colony.current_weight = calculatePrediction(oldWeight, foodAmount, adultRatio, 0, appState.params, harvestAmount);
                 }
                 
+                const males_count = Number(document.getElementById('inputColonyMales').value) || 0;
+                const females_count = Number(document.getElementById('inputColonyFemales').value) || 0;
+                let adultUpdated = false;
+                if (males_count > 0 || females_count > 0) {
+                    colony.males_count = males_count;
+                    colony.females_count = females_count;
+                    adultUpdated = true;
+                }
+
+                // Se aggiungiamo una pesata ma non aggiorniamo manualmente il conteggio degli adulti,
+                // assorbiamo la differenza di peso (surplus) facendola nascere in "baby"
+                if (eventType === 'pesata' && !adultUpdated && colony.current_weight !== oldWeight) {
+                    const wAdults = (colony.males_count || 0) * MASS.MALE + (colony.females_count || 0) * MASS.FEMALE;
+                    const wNinfe = (colony.subadults_count || 0) * MASS.SUBADULT + (colony.medium_count || 0) * MASS.MEDIUM + (colony.small_count || 0) * MASS.SMALL;
+                    const remainingForBaby = colony.current_weight - (wAdults + wNinfe);
+                    
+                    if (remainingForBaby > 0) {
+                        colony.baby_count = Math.round(remainingForBaby / MASS.BABY);
+                    } else {
+                        colony.baby_count = 0;
+                    }
+                }
+
                 await saveColony(colony);
                 
                 // Usa computeGlobalWeight() come fonte di verità: somma REALE di tutte le
@@ -2768,7 +2809,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 const globalNotes = `[${colony.name}] ${notes}`;
                 // Registra l'evento a livello globale con il nuovo peso calcolato
-                await processNewMeasurement(date, newGlobalWeight, foodAmount, adultRatio, globalNotes, harvestAmount, false, true, eventType);
+                await processNewMeasurement(date, newGlobalWeight, foodAmount, adultRatio, globalNotes, harvestAmount, false, true, eventType, colonyId, colony.current_weight);
             }
         } else {
             // Pesata Globale: distribuisce proporzionalmente tra le colonie attive
@@ -4657,55 +4698,4 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ── Override o Patch per processNewMeasurement ───────────────────────
 // Dobbiamo assicurarci che i dati della singola colonia vengano aggiornati quando si salva un evento
-const originalProcessNewMeasurement = processNewMeasurement;
-processNewMeasurement = async (date, realWeight, foodAmount, adultRatio, notes, harvestAmount, isNewBlood, isManualSubmit, eventType) => {
-    
-    let colony_id = null;
-    let males_count = 0;
-    let females_count = 0;
-
-    const colonySelect = document.getElementById('inputColonyId');
-    const isEntryModalActive = document.getElementById('entryModal') && document.getElementById('entryModal').classList.contains('active');
-
-    if (isEntryModalActive && colonySelect && colonySelect.value !== "") {
-        colony_id = Number(colonySelect.value);
-        males_count = Number(document.getElementById('inputColonyMales').value) || 0;
-        females_count = Number(document.getElementById('inputColonyFemales').value) || 0;
-        
-        // Se l'evento è una pesata o un nuovo sangue per una colonia, aggiorniamo il suo stato interno
-        if (eventType === 'pesata' || eventType === 'calibrazione' || eventType === 'nuovo_sangue') {
-            const colony = appState.colonies.find(c => c.id === colony_id);
-            if (colony) {
-                colony.current_weight = realWeight;
-                if (males_count > 0 || females_count > 0) {
-                    colony.males_count = males_count;
-                    colony.females_count = females_count;
-                }
-                await saveColony(colony);
-                updateColoniesUI();
-                
-                // Opzionale: aggiorna la UI di dettaglio se è aperta
-                const detailCard = document.getElementById('colonyDetailCard');
-                if (detailCard && detailCard.style.display === 'block' && document.getElementById('detailColonyName').innerText === colony.name) {
-                    showColonyDetails(colony.id);
-                }
-            }
-        }
-    }
-
-    await originalProcessNewMeasurement(date, realWeight, foodAmount, adultRatio, notes, harvestAmount, isNewBlood, isManualSubmit, eventType);
-};
-
-// Patch saveMeasurement per iniettare colony_id, males_count, females_count
-const originalSaveMeasurement = saveMeasurement;
-saveMeasurement = async (measurement) => {
-    const colonySelect = document.getElementById('inputColonyId');
-    const isEntryModalActive = document.getElementById('entryModal') && document.getElementById('entryModal').classList.contains('active');
-
-    if (isEntryModalActive && colonySelect && colonySelect.value !== "") {
-        measurement.colony_id = Number(colonySelect.value);
-        measurement.males_count = Number(document.getElementById('inputColonyMales').value) || 0;
-        measurement.females_count = Number(document.getElementById('inputColonyFemales').value) || 0;
-    }
-    return originalSaveMeasurement(measurement);
-};
+// Fine del file
